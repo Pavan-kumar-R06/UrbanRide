@@ -62,6 +62,7 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid email or password.' });
     }
     const isHashed = /^\$2[aby]\$/.test(user.password);
+    
     const passwordMatches = isHashed
       ? await bcrypt.compare(password, user.password)
       : user.password === password;

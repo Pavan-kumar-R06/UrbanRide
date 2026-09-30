@@ -9,7 +9,7 @@ const User = require('./models/User');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/urbanride';
+const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://pavankumar060905_db_user:PavaN@cluster0.yruwyei.mongodb.net/?appName=Cluster0';
 
 app.use(cors());
 app.use(express.json());
