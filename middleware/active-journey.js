@@ -9,7 +9,7 @@ async function hasActiveJourney(userId, excludeRideId) {
       status: { $in: activeStatuses },
       ...(excludeRideId ? { _id: { $ne: excludeRideId } } : {})
     }),
-    Booking.distinct('rid', { pid: String(userId), st: 'confirmed' })
+    Booking.distinct('rid', { pid: String(userId), st: 'confirmed', tripCompletedAt: null })
   ]);
   if (ownedRide) return true;
   if (!bookedRideIds.length) return false;

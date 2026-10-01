@@ -167,7 +167,7 @@ async function refreshSharedRideData(){
     const [storedRides,storedBookings=[]]=await Promise.all(requests);
     const previousStatuses=new Map(rides.map(ride=>[String(ride.id),ride.status]));
     const changed=mergeRemoteRecords(rides,storedRides,['status','prog','seats','rt','location','startedAt','estimatedDurationMinutes'])|
-      mergeRemoteRecords(bookings,storedBookings,['st','rated','seats','fare']);
+      mergeRemoteRecords(bookings,storedBookings,['st','rated','seats','fare','tripCompletedAt']);
     if(S.gpsRideId&&rides.some(ride=>String(ride.id)===String(S.gpsRideId)&&ride.status==='completed')){
       stopLocationSharing(false);
     }
@@ -217,6 +217,7 @@ async function persistNewBooking(booking) {
       method: 'POST',
       body: { ...booking, rid: String(booking.rid), pid: String(booking.pid) }
     });
+    Object.assign(booking,stored);
     booking.id = String(stored._id);
     booking._id = String(stored._id);
     return true;

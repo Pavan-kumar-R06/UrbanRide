@@ -11,7 +11,7 @@ function match(q,skip){
 function activeJourneyForUser(excludeRideId){
   const activeStatuses=['boarding','active'];
   return rides.find(ride=>String(ride.own)===String(S.me.id)&&String(ride.id)!==String(excludeRideId)&&activeStatuses.includes(ride.status))||
-    rides.find(ride=>String(ride.id)!==String(excludeRideId)&&activeStatuses.includes(ride.status)&&bookings.some(booking=>String(booking.rid)===String(ride.id)&&String(booking.pid)===String(S.me.id)&&booking.st==='confirmed'))||null;
+    rides.find(ride=>String(ride.id)!==String(excludeRideId)&&activeStatuses.includes(ride.status)&&bookings.some(booking=>String(booking.rid)===String(ride.id)&&String(booking.pid)===String(S.me.id)&&booking.st==='confirmed'&&!booking.tripCompletedAt))||null;
 }
 
 function openChatThread(threadId){
@@ -23,16 +23,37 @@ function openChatThread(threadId){
   go('chat');
 }
 
+const completingPassengerTrips=new Set();
+async function completePassengerSegment(booking){
+  const bookingId=String(booking._id||booking.id);
+  if(booking.tripCompletedAt||completingPassengerTrips.has(bookingId))return;
+  completingPassengerTrips.add(bookingId);
+  try{
+    const completed=await apiRequest('/bookings/'+encodeURIComponent(bookingId)+'/complete-leg',{method:'POST',body:{}});
+    Object.assign(booking,completed,{id:String(completed._id||booking.id),_id:String(completed._id||booking._id)});
+    save();
+    toast('You reached your drop-off point.');
+    if(S.view==='live')render();
+  }catch(err){
+    if(!err.message.includes('has not been reached'))console.warn('Passenger trip completion failed:',err.message);
+  }finally{completingPassengerTrips.delete(bookingId)}
+}
+
 async function book(rid,f,t,fare,n){
   if(activeJourneyForUser())return toast('Complete your current trip before booking another ride.');
   const r=rides.find(x=>x.id==rid);
-  if(r.seats<n){waitlist.unshift({rid,pid:S.me.id,pn:S.me.name,f,t,fare,seats:n,createdAt:new Date().toISOString()});toast('Ride is full. You joined the waitlist.');return render()}
   const booking={id:nid++,rid,pid:S.me.id,pn:S.me.name,f,t,fare,seats:n,st:'pending',createdAt:new Date().toISOString()};
   try {
     await persistNewBooking(booking);
   } catch(err) {
     toast(err.message || 'Booking could not be saved. Please try again.');
     return;
+  }
+  if(booking.st==='waitlisted'){
+    bookings.unshift(booking);
+    toast('Ride is full. You joined the waitlist.');
+    S.view='bookings';
+    return render();
   }
   r.seats-=n;
   bookings.unshift(booking);
@@ -61,10 +82,11 @@ async function promote(r){
 
 async function cancelB(id){
   const b=bookings.find(x=>x.id==id),r=rides.find(x=>x.id==b.rid);
+  const wasWaitlisted=b.st==='waitlisted';
   b.st='cancelled';
-  if(r.status!='cancelled')r.seats+=b.seats;
+  if(!wasWaitlisted&&r.status!='cancelled')r.seats+=b.seats;
   await persistBookingChanges(b,{st:b.st});
-  await promote(r);
+  if(!S.isDataActive)await promote(r);
   if(r.own)notify(r.own,b.pn+' cancelled their booking on '+rn(r.path)+'.',b.pn,'drive');
   logEv(b.pn+' cancelled a booking on '+rn(r.path));
   toast('Booking cancelled.');
@@ -75,7 +97,7 @@ async function decide(id,ok){
   const b=bookings.find(x=>x.id==id),r=rides.find(x=>x.id==b.rid);
   b.st=ok?'confirmed':'rejected';
   await persistBookingChanges(b,{st:b.st});
-  if(!ok){r.seats+=b.seats;await promote(r)}
+  if(!ok){r.seats+=b.seats;if(!S.isDataActive)await promote(r)}
   notify(b.pid,ok?'Your seat is confirmed for '+rn(r.path)+'.':'Your request for '+rn(r.path)+' was declined.',r.drv,'bookings');
   logEv((ok?'Accepted ':'Rejected ')+b.pn+' on '+rn(r.path));
   toast(ok?'Passenger accepted!':'Request declined.');

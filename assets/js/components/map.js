@@ -8,6 +8,30 @@ const CITY_GEO={
   mal:[13.003,77.564],ya:[13.028,77.540],heb:[13.035,77.598]
 };
 
+function rideSegmentForBooking(ride,booking){
+  const start=ride.path.indexOf(booking.f),end=ride.path.indexOf(booking.t);
+  if(start<0||end<=start)return null;
+  const segment=ride.path.slice(start,end+1);
+  const distance=(from,to)=>{
+    const radians=value=>value*Math.PI/180;
+    const lat1=radians(from[0]),lat2=radians(to[0]),dLat=lat2-lat1,dLng=radians(to[1]-from[1]);
+    const h=Math.sin(dLat/2)**2+Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLng/2)**2;
+    return 6371*2*Math.atan2(Math.sqrt(h),Math.sqrt(1-h));
+  };
+  let total=0,offset=0,segmentDistance=0;
+  for(let index=0;index<ride.path.length-1;index++){
+    const from=CITY_GEO[ride.path[index]],to=CITY_GEO[ride.path[index+1]];
+    if(!from||!to)continue;
+    const length=distance(from,to);
+    total+=length;
+    if(index<start)offset+=length;
+    if(index>=start&&index<end)segmentDistance+=length;
+  }
+  if(!total||!segmentDistance)return null;
+  const globalProgress=rideProgress(ride);
+  return{path:segment,start:segment[0],end:segment[segment.length-1],progress:Math.max(0,Math.min(1,(globalProgress*total-offset)/segmentDistance))};
+}
+
 function routePointForGps(location,path){
   if(!location||!Number.isFinite(Number(location.lat))||!Number.isFinite(Number(location.lng))||!path||path.length<2)return null;
   const latitude=Number(location.lat),longitude=Number(location.lng),cos=Math.cos(latitude*Math.PI/180);

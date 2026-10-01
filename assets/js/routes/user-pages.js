@@ -9,10 +9,10 @@ find(){
   },
   bookings(){
     const mine=bookings.filter(b=>String(b.pid)===String(S.me.id)).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0)).slice(0,25),w=waitlist.filter(x=>String(x.pid)===String(S.me.id)).slice(0,20);
-    const cl={pending:'w',confirmed:'',cancelled:'r','ride-cancelled':'r',rejected:'r'};
+    const cl={pending:'w',confirmed:'',waitlisted:'w',cancelled:'r','ride-cancelled':'r',rejected:'r'};
     return hd('My bookings','Track your seat requests, waitlist and completed trips.')+(mine.map(b=>{
       const r=rides.find(x=>x.id==b.rid);let ex='';
-      const isCompleted = r && r.status === 'completed';
+      const isCompleted = Boolean(b.tripCompletedAt)||(r && r.status === 'completed');
       if(b.st=='ride-cancelled'){
         const al=match({f:b.f,t:b.t,time:r.time,seats:b.seats,sort:'match'},r.id);
         ex=`<div class="mu" style="margin-top:10px"><b>Alternative rides</b></div>`+(al.map(m=>`<div class="row sp" style="margin-top:6px"><span>${m.r.drv} · ${m.r.time} · ₹${m.fare}</span><button class="btn s" onclick="book(${jsArg(m.r.id)},'${b.f}','${b.t}',${m.fare},${b.seats})">Book</button></div>`).join('')||'<div class="mu">No alternatives yet.</div>');
@@ -23,13 +23,13 @@ find(){
           <div class="row">
             ${isCompleted ? tg('trip completed','b') : tg(b.st,cl[b.st])}
             ${b.st=='confirmed' && !isCompleted ? `<button class="btn s" onclick="go('live')">Track</button>` : ''}
-            ${['pending','confirmed'].includes(b.st) && !isCompleted ? `<button class="btn g s" onclick="openChatThread(${jsArg(r.id)})">Message</button><button class="btn g s" onclick="cancelB(${jsArg(b.id)})">Cancel</button>` : ''}
+            ${['pending','confirmed','waitlisted'].includes(b.st) && !isCompleted ? `${b.st!=='waitlisted'?`<button class="btn g s" onclick="openChatThread(${jsArg(r.id)})">Message</button>`:''}<button class="btn g s" onclick="cancelB(${jsArg(b.id)})">Cancel</button>` : ''}
           </div>
         </div>
         ${isCompleted ? `
           <div style="margin-top:12px;padding:12px 14px;background:var(--s2);border-radius:10px;border:1px solid var(--bd);">
             <div class="row sp">
-              <span style="font-weight:700;font-size:13px;color:#10b981;">🎉 Ride Completed with ${r.drv}</span>
+              <span style="font-weight:700;font-size:13px;color:#10b981;">🎉 ${b.tripCompletedAt?'You arrived at your drop-off with ':'Ride Completed with '}${r.drv}</span>
               ${b.rated ? `<span style="color:#f59e0b;font-weight:700;font-size:13px;">✓ Rated ${b.rated} ★ / 5</span>` : '<span class="mu" style="font-size:12px;">Please rate your experience:</span>'}
             </div>
             ${!b.rated ? `
@@ -46,20 +46,23 @@ find(){
     }).join('')+w.map(x=>`<div class="card row sp"><span>${P[x.f][0]} → ${P[x.t][0]} · ride #${x.rid}</span>${tg('waitlisted','w')}</div>`).join('')||empty('ticket','No bookings yet.','<button class="btn" onclick="go(\'find\')">Find a ride</button>'));
   },
   live(){
-    const id=S.me.id;let r=rides.find(x=>x.own==id&&['boarding','active'].includes(x.status));
+    const id=S.me.id;let r=rides.find(x=>String(x.own)===String(id)&&['boarding','active'].includes(x.status)),passengerBooking=null;
     if(!r){
-      const booking=bookings.find(item=>{
+      passengerBooking=bookings.find(item=>{
         const ride=rides.find(candidate=>String(candidate.id)===String(item.rid));
-        return String(item.pid)===String(id)&&item.st==='confirmed'&&ride&&['boarding','active'].includes(ride.status);
+        return String(item.pid)===String(id)&&item.st==='confirmed'&&!item.tripCompletedAt&&ride&&['boarding','active'].includes(ride.status);
       });
-      r=booking&&rides.find(ride=>String(ride.id)===String(booking.rid));
+      r=passengerBooking&&rides.find(ride=>String(ride.id)===String(passengerBooking.rid));
     }
+      const segment=passengerBooking?rideSegmentForBooking(r,passengerBooking):null;
+      const trackingPath=segment?segment.path:r.path;
+      const progress=segment?segment.progress:rideProgress(r);
     if(!r)return hd('Trip status','Status updates and emergency support for your ride.')+`<div class="two"><div>${mapSvg()}<p class="mu">Your route and car appear here when a trip is active.</p></div><div>${empty('pin','No active trip right now. Tracking activates when a driver confirms and starts your trip.','<button class="btn" onclick="go(\'find\')">Find a ride</button>')}</div></div>`;
     const isOwner=String(r.own)===String(id),canShare=isOwner&&['boarding','active'].includes(r.status);
+      return hd('Trip status',rn(trackingPath)+' · '+tg(r.status,'b'))+`<div class="two"><div>${mapSvg({list:[{id:r.id,path:trackingPath}],hi:r.id,start:trackingPath[0],end:trackingPath[trackingPath.length-1],progress,location:locationFresh?r.location:null})}<div class="row sp"><span class="mu">${segment?'Your trip segment':'Trip progress'}</span><b id="trip-progress-text" data-ride-id="${r.id}" ${passengerBooking?`data-booking-id="${passengerBooking._id||passengerBooking.id}"`:''}>${Math.round(progress*100)}%</b></div><div class="bar"><i id="trip-progress-bar" style="width:${Math.round(progress*100)}%"></i></div><p class="mu">${locationMessage}</p></div><div><div class="card"><div class="row">${av(r.drv)}<div><h3>${r.drv}</h3><span class="mu">${r.veh}</span></div></div><p class="mu" style="margin-top:14px">${segment?'Your tracking ends at '+P[trackingPath[trackingPath.length-1]][0]+'.':r.status==='active'?'The driver marked this ride in progress.':'Waiting for the driver to start.'}</p>${canShare?`<p class="mu">Confirmed passengers can see your location while sharing is on.</p><button class="btn ${S.gpsRideId===String(r.id)?'d':''}" onclick="${S.gpsRideId===String(r.id)?'stopLocationSharing()':'startLocationSharing('+jsArg(r.id)+')'}">${S.gpsRideId===String(r.id)?'Stop location sharing':'Share my location'}</button>`:''}</div>
     const locationFresh=r.location&&Date.now()-new Date(r.location.updatedAt).getTime()<90000;
     const locationMessage=locationFresh?'Driver location updated '+ago(new Date(r.location.updatedAt).getTime())+(r.location.accuracy?' · accuracy about '+Math.round(r.location.accuracy)+' m':''):r.status==='completed'?'Trip completed.':(isOwner?'Share your location to show the car on the map.':'Waiting for the driver to share GPS location.');
-    const progress=rideProgress(r);
-    return hd('Trip status',rn(r.path)+' · '+tg(r.status,'b'))+`<div class="two"><div>${mapSvg({list:[{id:r.id,path:r.path}],hi:r.id,start:r.path[0],end:r.path[r.path.length-1],progress,location:locationFresh?r.location:null})}<div class="row sp"><span class="mu">Trip progress</span><b id="trip-progress-text" data-ride-id="${r.id}">${Math.round(progress*100)}%</b></div><div class="bar"><i id="trip-progress-bar" style="width:${Math.round(progress*100)}%"></i></div><p class="mu">${locationMessage}</p></div><div><div class="card"><div class="row">${av(r.drv)}<div><h3>${r.drv}</h3><span class="mu">${r.veh}</span></div></div><p class="mu" style="margin-top:14px">${r.status==='active'?'The driver marked this ride in progress.':r.status==='completed'?'Trip completed.':'Waiting for the driver to start.'}</p>${canShare?`<p class="mu">Confirmed passengers can see your location while sharing is on.</p><button class="btn ${S.gpsRideId===String(r.id)?'d':''}" onclick="${S.gpsRideId===String(r.id)?'stopLocationSharing()':'startLocationSharing('+jsArg(r.id)+')'}">${S.gpsRideId===String(r.id)?'Stop location sharing':'Share my location'}</button>`:''}</div>
+    return hd('Trip status',rn(trackingPath)+' · '+tg(r.status,'b'))+`<div class="two"><div>${mapSvg({list:[{id:r.id,path:trackingPath}],hi:r.id,start:trackingPath[0],end:trackingPath[trackingPath.length-1],progress:trackingProgress,location:locationFresh?r.location:null})}<div class="row sp"><span class="mu">${segment?'Your trip segment':'Trip progress'}</span><b id="trip-progress-text" data-ride-id="${r.id}" ${passengerBooking?`data-booking-id="${passengerBooking._id||passengerBooking.id}"`:''}>${Math.round(trackingProgress*100)}%</b></div><div class="bar"><i id="trip-progress-bar" style="width:${Math.round(trackingProgress*100)}%"></i></div><p class="mu">${locationMessage}</p></div><div><div class="card"><div class="row">${av(r.drv)}<div><h3>${r.drv}</h3><span class="mu">${r.veh}</span></div></div><p class="mu" style="margin-top:14px">${segment?'Your tracking ends at '+P[trackingPath[trackingPath.length-1]][0]+'.':r.status==='active'?'The driver marked this ride in progress.':'Waiting for the driver to start.'}</p>${canShare?`<p class="mu">Confirmed passengers can see your location while sharing is on.</p><button class="btn ${S.gpsRideId===String(r.id)?'d':''}" onclick="${S.gpsRideId===String(r.id)?'stopLocationSharing()':'startLocationSharing('+jsArg(r.id)+')'}">${S.gpsRideId===String(r.id)?'Stop location sharing':'Share my location'}</button>`:''}</div>
     <div class="card"><div class="row"><button class="btn d" onclick="S.sosOpen=!S.sosOpen;S.sosRide=${jsArg(r.id)};render()">SOS Emergency</button><button class="btn g" onclick="toast('Live trip link copied.')">Share trip</button><button class="btn g" onclick="openChatThread(${jsArg(r.id)})">Message</button></div></div>
     ${S.sosOpen?`<div class="card"><h3>Emergency report</h3><p class="mu">Tell the response team what is happening. Include location details if you can.</p><div class="fg"><div><label for="sos-type">Emergency type</label><select id="sos-type"><option value="">Choose an emergency</option><option value="medical">Medical emergency</option><option value="collision">Collision or crash</option><option value="unsafe">Personal safety concern</option><option value="vehicle">Vehicle breakdown</option><option value="other">Other</option></select></div><div><label for="sos-location">Current location</label><input id="sos-location" maxlength="300" placeholder="Street, landmark, or pickup point"></div></div><label for="sos-details" style="margin-top:12px">What happened?</label><textarea id="sos-details" maxlength="1000" rows="3" placeholder="Describe the help you need"></textarea><div class="row" style="margin-top:12px"><button class="btn d" onclick="sos()">Send emergency report</button><button class="btn g" onclick="S.sosOpen=false;render()">Cancel</button></div></div>`:''}
     </div></div>`;
@@ -82,7 +85,7 @@ find(){
       const rs=bookings.filter(b=>b.rid==r.id),nx={scheduled:'Start boarding',boarding:'Start ride',active:'Complete ride'}[r.status];
       return`<div class="card"><div class="row sp"><div><h3>${rn(r.path)}</h3><span class="mu">${r.date} · ${r.time} · ${r.cap-r.seats}/${r.cap} seats filled · ₹${r.rate}/km</span></div><div class="row">${tg(r.status,r.status=='cancelled'?'r':'b')}${nx?`<button class="btn s" onclick="step(${jsArg(r.id)})">${nx}</button>`:''}${r.status=='scheduled'?`<button class="btn d s" onclick="cancelRide(${jsArg(r.id)})">Cancel</button>`:''}${['boarding','active'].includes(r.status)?`<button class="btn g s" onclick="go('live')">Live map</button>`:''}</div></div>
       <div class="row" style="margin:10px 0"><div class="bar"><i style="width:${(r.cap-r.seats)/r.cap*100}%"></i></div><span class="mu">${r.pf.map(k=>PF[k]).join(' · ')}</span></div>
-      ${rs.length?rs.map(b=>`<div class="row sp" style="padding:10px 0;border-top:1px solid var(--bd)"><div class="row">${av(b.pn)}<div><b>${b.pn}</b><br><span class="mu">${P[b.f][0]} → ${P[b.t][0]} · ${b.seats} seat(s) · ₹${b.fare}</span></div></div><div class="row">${tg(b.st,b.st=='pending'?'w':b.st=='confirmed'?'':'r')}${b.st=='pending'?`<button class="btn s" onclick="decide(${jsArg(b.id)},1)">Accept</button><button class="btn g s" onclick="decide(${jsArg(b.id)},0)">Reject</button>`:''}<button class="btn g s" onclick="openChatThread(${jsArg(r.id)})">Message</button></div></div>`).join(''):'<p class="mu" style="margin:0">No requests yet.</p>'}</div>`;
+      ${rs.length?rs.map(b=>`<div class="row sp" style="padding:10px 0;border-top:1px solid var(--bd)"><div class="row">${av(b.pn)}<div><b>${b.pn}</b><br><span class="mu">${P[b.f][0]} → ${P[b.t][0]} · ${b.seats} seat(s) · ₹${b.fare}</span></div></div><div class="row">${b.tripCompletedAt?tg('arrived',''):tg(b.st,b.st=='pending'||b.st==='waitlisted'?'w':b.st=='confirmed'?'':'r')}${b.st=='waitlisted'?tg('waiting for a seat','w'):''}${b.st=='pending'?`<button class="btn s" onclick="decide(${jsArg(b.id)},1)">Accept</button><button class="btn g s" onclick="decide(${jsArg(b.id)},0)">Reject</button>`:''}<button class="btn g s" onclick="openChatThread(${jsArg(r.id)})">Message</button></div></div>`).join(''):'<p class="mu" style="margin:0">No requests yet.</p>'}</div>`;
     }).join('')||empty('compass','You have not published any ride yet.','<button class="btn" onclick="go(\'offer\')">Offer a ride</button>'));
   },
   chat(){

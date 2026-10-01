@@ -3,14 +3,24 @@ function updateLiveRideProgress(){
   if(!progressText)return;
   const ride=rides.find(item=>String(item.id)===progressText.dataset.rideId);
   if(!ride)return;
-  const progress=rideProgress(ride),percentage=Math.round(progress*100);
+  let progress=rideProgress(ride),path=ride.path;
+  const bookingId=progressText.dataset.bookingId;
+  if(bookingId){
+    const booking=bookings.find(item=>String(item._id||item.id)===String(bookingId));
+    if(booking?.tripCompletedAt)progress=1;
+    else if(booking){
+      const segment=rideSegmentForBooking(ride,booking);
+      if(segment){path=segment.path;progress=segment.progress;if(progress>=1)void completePassengerSegment(booking);}
+    }
+  }
+  const percentage=Math.round(progress*100);
   progressText.textContent=percentage+'%';
   const bar=$('trip-progress-bar');
   if(bar)bar.style.width=percentage+'%';
   const marker=$('trip-car-marker');
   if(marker){
     const fresh=ride.location&&Date.now()-new Date(ride.location.updatedAt).getTime()<90000;
-    const point=fresh?routePointForGps(ride.location,ride.path):routePointForProgress(progress,ride.path);
+    const point=fresh?routePointForGps(ride.location,path):routePointForProgress(progress,path);
     if(point)marker.setAttribute('transform',`translate(${point.x} ${point.y}) rotate(${point.angle})`);
   }
 }

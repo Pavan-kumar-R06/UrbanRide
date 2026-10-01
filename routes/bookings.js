@@ -6,6 +6,59 @@ const User = require('../models/User');
 const hasActiveJourney = require('../middleware/active-journey');
 
 const router = express.Router();
+const CITY_GEO={
+  ec:[12.839,77.677],hsr:[12.911,77.644],kor:[12.935,77.624],jay:[12.925,77.583],
+  mg:[12.975,77.606],ind:[12.978,77.641],mar:[12.956,77.701],wf:[12.970,77.750],
+  mal:[13.003,77.564],ya:[13.028,77.540],heb:[13.035,77.598]
+};
+
+function segmentProgress(ride,booking){
+  if(ride.status==='completed')return 1;
+  if(!ride.startedAt||!ride.estimatedDurationMinutes)return 0;
+  const start=ride.path.indexOf(booking.f),end=ride.path.indexOf(booking.t);
+  if(start<0||end<=start)return 0;
+  const distance=(from,to)=>{
+    const radians=value=>value*Math.PI/180;
+    const lat1=radians(from[0]),lat2=radians(to[0]),dLat=lat2-lat1,dLng=radians(to[1]-from[1]);
+    const h=Math.sin(dLat/2)**2+Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLng/2)**2;
+    return 6371*2*Math.atan2(Math.sqrt(h),Math.sqrt(1-h));
+  };
+  let total=0,segment=0,offset=0;
+  for(let index=0;index<ride.path.length-1;index++){
+    const from=CITY_GEO[ride.path[index]],to=CITY_GEO[ride.path[index+1]];
+    if(!from||!to)continue;
+    const leg=distance(from,to);
+    total+=leg;
+    if(index<start)offset+=leg;
+    if(index>=start&&index<end)segment+=leg;
+  }
+  if(!total||!segment)return 0;
+  const overall=Math.max(0,Math.min(1,(Date.now()-new Date(ride.startedAt).getTime())/(ride.estimatedDurationMinutes*60000)));
+  return Math.max(0,Math.min(1,(overall*total-offset)/segment));
+}
+
+async function promoteWaitlistedPassengers(rideId){
+  while(true){
+    const ride=await Ride.findById(rideId).select('seats');
+    if(!ride||ride.seats<1)return;
+    const candidate=await Booking.findOneAndUpdate(
+      {rid:String(rideId),st:'waitlisted',seats:{$lte:ride.seats}},
+      {$set:{st:'promoting'}},
+      {new:true,sort:{createdAt:1}}
+    );
+    if(!candidate)return;
+    const reserved=await Ride.findOneAndUpdate(
+      {_id:rideId,seats:{$gte:candidate.seats}},
+      {$inc:{seats:-candidate.seats}},
+      {new:true}
+    );
+    if(!reserved){
+      await Booking.updateOne({_id:candidate._id,st:'promoting'},{$set:{st:'waitlisted'}});
+      return;
+    }
+    await Booking.updateOne({_id:candidate._id,st:'promoting'},{$set:{st:'pending'}});
+  }
+}
 
 router.get('/bookings', async (req, res) => {
   try {
@@ -39,8 +92,9 @@ router.post('/bookings', async (req, res) => {
       return res.status(400).json({ error: 'Ride, passenger, route, and a positive seat count are required.' });
     }
 
+    let bookingStatus='pending';
     if (mongoose.isValidObjectId(rid)) {
-      const candidateRide = await Ride.findById(rid).select('status');
+      const candidateRide = await Ride.findById(rid).select('status seats');
       if (!candidateRide) return res.status(404).json({ error: 'Ride not found.' });
       if (candidateRide.status !== 'scheduled') return res.status(409).json({ error: 'This ride is not accepting bookings.' });
       const ride = await Ride.findOneAndUpdate(
@@ -50,18 +104,37 @@ router.post('/bookings', async (req, res) => {
       );
       if (!ride) {
         const exists = await Ride.exists({ _id: rid });
-        return res.status(exists ? 409 : 404).json({ error: exists ? 'Not enough seats remain.' : 'Ride not found.' });
+        if(!exists)return res.status(404).json({ error: 'Ride not found.' });
+        bookingStatus='waitlisted';
+      }else{
+        reservedRideId = ride._id;
       }
-      reservedRideId = ride._id;
     }
 
-    const booking = await Booking.create({ rid: String(rid), pid: req.user.id, pn: passenger.name, f, t, seats: Number(seats), fare, st: 'pending' });
+    const booking = await Booking.create({ rid: String(rid), pid: req.user.id, pn: passenger.name, f, t, seats: Number(seats), fare, st: bookingStatus });
     res.status(201).json(booking);
   } catch (err) {
     if (reservedRideId) await Ride.updateOne({ _id: reservedRideId }, { $inc: { seats: Number(req.body.seats || 1) } });
     console.error('Booking creation error:', err);
     res.status(500).json({ error: 'Failed to create booking.' });
   }
+});
+
+router.post('/bookings/:id/complete-leg', async (req,res)=>{
+  try{
+    if(!mongoose.isValidObjectId(req.params.id))return res.status(400).json({error:'Invalid booking id.'});
+    const booking=await Booking.findById(req.params.id);
+    if(!booking)return res.status(404).json({error:'Booking not found.'});
+    if(String(booking.pid)!==req.user.id)return res.status(403).json({error:'Only the passenger can complete this trip segment.'});
+    if(booking.st!=='confirmed')return res.status(409).json({error:'Only a confirmed booking can be completed.'});
+    if(booking.tripCompletedAt)return res.json(booking);
+    const ride=mongoose.isValidObjectId(booking.rid)?await Ride.findById(booking.rid):null;
+    if(!ride)return res.status(404).json({error:'Ride not found.'});
+    if(ride.status!=='completed'&&segmentProgress(ride,booking)<1)return res.status(409).json({error:'Your drop-off point has not been reached yet.'});
+    booking.tripCompletedAt=new Date();
+    await booking.save();
+    res.json(booking);
+  }catch(err){res.status(500).json({error:'Failed to complete passenger trip.'})}
 });
 
 router.put('/bookings/:id', async (req, res) => {
@@ -86,19 +159,20 @@ router.put('/bookings/:id', async (req, res) => {
     if (!isAdmin && isDriver && rated !== undefined) {
       return res.status(403).json({ error: 'Only the passenger may rate this booking.' });
     }
-    if (st !== undefined && !['confirmed', 'rejected', 'cancelled', 'ride-cancelled'].includes(st)) {
+    if (st !== undefined && !['confirmed', 'rejected', 'cancelled', 'ride-cancelled', 'waitlisted'].includes(st)) {
       return res.status(400).json({ error: 'Invalid booking status.' });
     }
-    if (rated !== undefined && (!Number.isInteger(rated) || rated < 1 || rated > 5 || !isPassenger || ride?.status !== 'completed')) {
+    if (rated !== undefined && (!Number.isInteger(rated) || rated < 1 || rated > 5 || !isPassenger || (!booking.tripCompletedAt&&ride?.status!=='completed'))) {
       return res.status(400).json({ error: 'A rating from 1 to 5 can be submitted by the passenger after ride completion.' });
     }
-    const releaseSeats = st && ['cancelled', 'rejected', 'ride-cancelled'].includes(st) && !['cancelled', 'rejected', 'ride-cancelled'].includes(booking.st);
+    const releaseSeats = st && ['cancelled', 'rejected', 'ride-cancelled'].includes(st) && !['cancelled', 'rejected', 'ride-cancelled','waitlisted'].includes(booking.st);
     if (st !== undefined) booking.st = st;
     if (rated !== undefined) booking.rated = rated;
     await booking.save();
 
     if (releaseSeats && ride && mongoose.isValidObjectId(booking.rid)) {
       await Ride.updateOne({ _id: booking.rid }, { $inc: { seats: booking.seats } });
+      await promoteWaitlistedPassengers(booking.rid);
     }
     res.json(booking);
   } catch (err) {
