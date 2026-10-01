@@ -36,6 +36,33 @@ router.post('/rides', async (req, res) => {
   }
 });
 
+router.post('/rides/:id/progress', async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid ride id.' });
+    }
+    const ride = await Ride.findOneAndUpdate(
+      { _id: req.params.id, own: req.user.id, status: 'active', prog: { $lt: 1 } },
+      [
+        { $set: { prog: { $min: [1, { $add: [{ $ifNull: ['$prog', 0] }, 0.02] }] } } },
+        { $set: { status: { $cond: [{ $gte: ['$prog', 1] }, 'completed', '$status'] } } }
+      ],
+      { new: true }
+    );
+    if (ride) return res.json(ride);
+
+    const existing = await Ride.findById(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Ride not found.' });
+    if (req.user.role !== 'admin' && String(existing.own) !== req.user.id) {
+      return res.status(403).json({ error: 'Only this ride\'s driver can update its progress.' });
+    }
+    res.json(existing);
+  } catch (err) {
+    console.error('Ride progress error:', err);
+    res.status(500).json({ error: 'Failed to update ride progress.' });
+  }
+});
+
 router.put('/rides/:id', async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) {

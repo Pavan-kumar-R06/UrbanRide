@@ -36,6 +36,7 @@ async function login(){
     }
     const u = data.user;
     u.id = u.id || u._id;
+    await rememberBrowserCredential();
     storeAuthSession(data.token, u);
     const existing = users.find(x => x.email === u.email || x.id === u.id);
     if (existing) Object.assign(existing, u);

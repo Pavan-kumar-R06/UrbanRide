@@ -290,6 +290,21 @@ body {
 .pw-toggle-btn:hover {
   color: #ffffff;
 }
+.auth-remember-login {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  color: #cbd5e1;
+  font-size: 12px;
+  cursor: pointer;
+}
+.auth-remember-login input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: #ffffff;
+}
 
 .auth-error {
   background: rgba(239, 68, 68, 0.16);

@@ -1,4 +1,21 @@
 const TOKEN_KEY='urbanride_access_token';
+const REMEMBERED_EMAIL_KEY='urbanride_remembered_email';
+let sharedDataSyncing=false;
+
+function getRememberedEmail(){
+  try{return localStorage.getItem(REMEMBERED_EMAIL_KEY)||''}catch(e){return ''}
+}
+
+async function rememberBrowserCredential(){
+  const email=$('ae')&&$('ae').value.trim();
+  const remember=$('remember-login')&&$('remember-login').checked;
+  if(!remember){localStorage.removeItem(REMEMBERED_EMAIL_KEY);return}
+  if(email)localStorage.setItem(REMEMBERED_EMAIL_KEY,email);
+  if(!email||!window.PasswordCredential||!navigator.credentials?.store)return;
+  try{
+    await navigator.credentials.store(new PasswordCredential($('auth-form')));
+  }catch(e){}
+}
 
 async function apiRequest(path, { method = 'GET', body } = {}) {
   const headers = {};
@@ -77,6 +94,42 @@ async function syncDatabaseData() {
     S.isMongoActive = false;
     console.warn('Could not sync MongoDB data:', err.message);
   }
+}
+
+function mergeRemoteRecords(localRecords, remoteRecords, compareFields){
+  let changed=false;
+  remoteRecords.forEach(remote=>{
+    const id=String(remote._id);
+    const current=localRecords.find(record=>String(record._id||record.id)===id);
+    const normalized={...remote,id,_id:id};
+    if(!current){localRecords.push(normalized);changed=true;return}
+    if(compareFields.some(field=>JSON.stringify(current[field])!==JSON.stringify(normalized[field])))changed=true;
+    Object.assign(current,normalized);
+  });
+  return changed;
+}
+
+async function refreshSharedRideData(){
+  if(!S.me||!S.isMongoActive||sharedDataSyncing)return;
+  sharedDataSyncing=true;
+  try{
+    const [storedRides,storedBookings]=await Promise.all([apiRequest('/rides'),apiRequest('/bookings')]);
+    const changed=mergeRemoteRecords(rides,storedRides,['status','prog','seats','rt'])|
+      mergeRemoteRecords(bookings,storedBookings,['st','rated','seats','fare']);
+    if(changed){
+      save();
+      if(['live','drive','bookings'].includes(S.view))render();
+    }
+  }catch(err){
+    if(!S.me)render();
+    else console.warn('Live ride sync failed:',err.message);
+  }finally{
+    sharedDataSyncing=false;
+  }
+}
+
+async function advanceRideProgress(ride){
+  return apiRequest('/rides/'+ride._id+'/progress',{method:'POST',body:{}});
 }
 
 async function persistNewRide(ride) {

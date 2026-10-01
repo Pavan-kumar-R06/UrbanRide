@@ -9,7 +9,7 @@ const User = require('./models/User');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://pavankumar060905_db_user:PavaN@cluster0.yruwyei.mongodb.net/?appName=Cluster0';
+const MONGO_URI = process.env.MONGO_URI || (process.env.NODE_ENV === 'production' ? '' : 'mongodb://127.0.0.1:27017/urbanride');
 
 app.use(cors());
 app.use(express.json());
@@ -75,6 +75,7 @@ async function migratePlaintextPasswords() {
 let connectionPromise;
 
 async function connectToDatabase() {
+  if (!MONGO_URI) throw new Error('MONGO_URI must be configured in the production environment.');
   if (mongoose.connection.readyState === 1) return;
   if (!connectionPromise) {
     connectionPromise = mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 10000 })

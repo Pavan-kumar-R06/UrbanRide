@@ -48,6 +48,7 @@ const S={
   cy:50,
   lay:{metro:1,road:1,traf:0},
   showPw:false,
+  rememberLogin:false,
   isMongoActive:false,
   loading:false,
   anaRange:'7d', // 'today', '7d', '30d', 'all'

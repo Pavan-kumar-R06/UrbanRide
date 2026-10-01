@@ -66,7 +66,7 @@ function authV(){
         <label>Email Address</label>
         <div class="auth-input-box">
           <span class="auth-field-icon">${ic('mail', 18)}</span>
-          <input id="ae" name="${isReg ? 'email' : 'username'}" type="email" autocomplete="${isReg ? 'email' : 'username'}" placeholder="name@domain.com" value="${isReg ? '' : isAdmin ? 'admin@urbanmobility.com' : 'aarav@demo.com'}">
+          <input id="ae" name="${isReg ? 'email' : 'username'}" type="email" autocomplete="${isReg ? 'email' : 'username'}" placeholder="name@domain.com" value="${isReg ? '' : isAdmin ? 'admin@urbanmobility.com' : getRememberedEmail() || 'aarav@demo.com'}">
         </div>
       </div>
 
@@ -80,6 +80,8 @@ function authV(){
           </button>
         </div>
       </div>
+
+      ${!isReg ? `<label class="auth-remember-login"><input id="remember-login" type="checkbox" ${S.rememberLogin||getRememberedEmail()?'checked':''} onchange="S.rememberLogin=this.checked"><span>Remember me on this device</span></label>` : ''}
 
       ${isReg ? `
       <div class="auth-field">
