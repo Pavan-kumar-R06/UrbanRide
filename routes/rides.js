@@ -190,10 +190,16 @@ router.put('/rides/:id', async (req, res) => {
 
 router.delete('/rides/:id', async (req, res) => {
   try {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Administrator access required.' });
     if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid ride id.' });
-    const ride = await Ride.findById(req.params.id).select('_id');
+    const ride = await Ride.findById(req.params.id).select('_id own status');
     if (!ride) return res.status(404).json({ error: 'Ride not found.' });
+    if (req.user.role !== 'admin') {
+      if (String(ride.own) !== req.user.id) return res.status(403).json({ error: 'Only the ride owner or an administrator can delete this ride.' });
+      if (['boarding', 'active'].includes(ride.status)) return res.status(409).json({ error: 'A ride in progress cannot be deleted.' });
+      if (ride.status === 'scheduled' && await Booking.exists({ rid: String(ride._id), st: { $in: ['pending', 'confirmed', 'waitlisted', 'promoting'] } })) {
+        return res.status(409).json({ error: 'Cancel this ride first so passengers are updated, then delete it.' });
+      }
+    }
     const rideId = String(ride._id);
     await Promise.all([
       Booking.deleteMany({ rid: rideId }),

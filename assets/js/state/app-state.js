@@ -79,3 +79,5 @@ async function blk(id){
     render();
   }catch(err){toast(err.message)}
 }
+
+const fareText=b=>{const fee=Number(b.fee)||0;return fee?`₹${b.fare} + ₹${fee} platform fee = ₹${Number(b.fare)+fee}`:`₹${b.fare}`};

@@ -8,6 +8,7 @@ const bookingSchema = new mongoose.Schema({
   t: { type: String, required: true },
   seats: { type: Number, default: 1 },
   fare: { type: Number, default: 0 },
+  fee: { type: Number, default: 0 },
   st: { type: String, default: 'pending' },
   tripCompletedAt: { type: Date, default: null },
   rated: { type: Number, min: 1, max: 5, default: null },

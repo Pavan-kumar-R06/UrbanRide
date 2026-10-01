@@ -82,7 +82,7 @@ router.get('/bookings', async (req, res) => {
 router.post('/bookings', async (req, res) => {
   let reservedRideId;
   try {
-    const { rid, f, t, seats = 1, fare = 0 } = req.body;
+    const { rid, f, t, seats = 1, fare = 0, fee = 0 } = req.body;
     const passenger = await User.findById(req.user.id).select('name blocked');
     if (!passenger || passenger.blocked) return res.status(403).json({ error: 'This account cannot book rides.' });
     if (await hasActiveJourney(req.user.id)) {
@@ -92,6 +92,9 @@ router.post('/bookings', async (req, res) => {
       return res.status(400).json({ error: 'Ride, passenger, route, and a positive seat count are required.' });
     }
 
+    if (![fare, fee].every(value => Number.isFinite(Number(value)) && Number(value) >= 0)) {
+      return res.status(400).json({ error: 'Fare and fee must be non-negative numbers.' });
+    }
     let bookingStatus='pending';
     if (mongoose.isValidObjectId(rid)) {
       const candidateRide = await Ride.findById(rid).select('status seats');
@@ -111,7 +114,7 @@ router.post('/bookings', async (req, res) => {
       }
     }
 
-    const booking = await Booking.create({ rid: String(rid), pid: req.user.id, pn: passenger.name, f, t, seats: Number(seats), fare, st: bookingStatus });
+    const booking = await Booking.create({ rid: String(rid), pid: req.user.id, pn: passenger.name, f, t, seats: Number(seats), fare: Number(fare), fee: Number(fee), st: bookingStatus });
     res.status(201).json(booking);
   } catch (err) {
     if (reservedRideId) await Ride.updateOne({ _id: reservedRideId }, { $inc: { seats: Number(req.body.seats || 1) } });

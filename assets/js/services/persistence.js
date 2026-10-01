@@ -166,7 +166,17 @@ async function refreshSharedRideData(){
     if(needsBookings)requests.push(apiRequest('/bookings'));
     const [storedRides,storedBookings=[]]=await Promise.all(requests);
     const previousStatuses=new Map(rides.map(ride=>[String(ride.id),ride.status]));
-    const changed=mergeRemoteRecords(rides,storedRides,['status','prog','seats','rt','location','startedAt','estimatedDurationMinutes'])|
+    const storedRideIds=new Set(storedRides.map(ride=>String(ride._id)));
+    const removedRideIds=rides.filter(ride=>ride._id&&!storedRideIds.has(String(ride._id))).map(ride=>String(ride.id));
+    if(removedRideIds.length)removeRideRecords(removedRideIds);
+    let removedBookings=false;
+    if(needsBookings){
+      const storedBookingIds=new Set(storedBookings.map(booking=>String(booking._id)));
+      const before=bookings.length;
+      bookings=bookings.filter(booking=>!booking._id||storedBookingIds.has(String(booking._id)));
+      removedBookings=bookings.length!==before;
+    }
+    const changed=removedRideIds.length>0||removedBookings||mergeRemoteRecords(rides,storedRides,['status','prog','seats','rt','location','startedAt','estimatedDurationMinutes'])|
       mergeRemoteRecords(bookings,storedBookings,['st','rated','seats','fare','tripCompletedAt']);
     if(S.gpsRideId&&rides.some(ride=>String(ride.id)===String(S.gpsRideId)&&ride.status==='completed')){
       stopLocationSharing(false);

@@ -4,7 +4,8 @@ function match(q,skip){
     const[i,d1]=near(r.path,q.f),[j,d2]=near(r.path,q.t);
     if(i>=j||d1>15||d2>15)return null;
     const score=Math.round(Math.max(0,100-d1*2-d2*2-Math.abs(mins(r.time)-mins(q.time))/6)),k=km(r.path,i,j);
-    return{r,score,walk:(d1*.3).toFixed(1),pick:r.path[i],drop:r.path[j],k,fare:Math.round(k*r.rate/(r.cap-r.seats+2))*q.seats}
+    const pr=priceFor(k,r.rate,q.seats);
+    return{r,score,walk:(d1*.3).toFixed(1),pick:r.path[i],drop:r.path[j],k,perSeat:pr.perSeat,fare:pr.base,fee:pr.fee}
   }).filter(x=>x&&x.score>20).sort((a,b)=>q.sort=='fare'?a.fare-b.fare:q.sort=='time'?mins(a.r.time)-mins(b.r.time):b.score-a.score);
 }
 
@@ -39,10 +40,10 @@ async function completePassengerSegment(booking){
   }finally{completingPassengerTrips.delete(bookingId)}
 }
 
-async function book(rid,f,t,fare,n){
+async function book(rid,f,t,fare,n,fee=0){
   if(activeJourneyForUser())return toast('Complete your current trip before booking another ride.');
   const r=rides.find(x=>x.id==rid);
-  const booking={id:nid++,rid,pid:S.me.id,pn:S.me.name,f,t,fare,seats:n,st:'pending',createdAt:new Date().toISOString()};
+  const booking={id:nid++,rid,pid:S.me.id,pn:S.me.name,f,t,fare,fee,seats:n,st:'pending',createdAt:new Date().toISOString()};
   try {
     await persistNewBooking(booking);
   } catch(err) {
@@ -225,4 +226,35 @@ function threadTitle(r){
   if(String(r.own)!==String(S.me.id))return r.drv;
   const names=[...new Set(bookings.filter(b=>String(b.rid)===String(r.id)&&['pending','confirmed'].includes(b.st)).map(b=>b.pn))];
   return names.length?names.join(', '):'No passengers yet';
+}
+
+const LIVE_BOOKING_STATUSES=['pending','confirmed','waitlisted','promoting'];
+function canDeleteRide(r){
+  if(!r||String(r.own)!==String(S.me.id))return false;
+  if(['boarding','active'].includes(r.status))return false;
+  if(r.status==='scheduled')return !bookings.some(b=>String(b.rid)===String(r.id)&&LIVE_BOOKING_STATUSES.includes(b.st));
+  return true;
+}
+async function deleteMyRide(id){
+  const ride=rides.find(item=>String(item.id)===String(id));
+  if(!ride)return toast('Ride not found.');
+  if(!canDeleteRide(ride))return toast('Cancel the ride first (or wait until it finishes) before deleting it.');
+  const note=ride.status==='completed'?' Its earnings and passenger history will be removed too.':'';
+  if(!confirm('Delete '+rn(ride.path)+'?'+note+' Its bookings and messages will be removed.'))return;
+  try{
+    if(ride._id&&S.isDataActive)await apiRequest('/rides/'+encodeURIComponent(ride._id),{method:'DELETE'});
+    removeRideRecords([String(id)]);
+    toast('Ride deleted.');
+    render();
+  }catch(err){toast(err.message||'Ride could not be deleted.')}
+}
+function removeRideRecords(ids){
+  const gone=new Set(ids.map(String));
+  rides=rides.filter(item=>!gone.has(String(item.id)));
+  bookings=bookings.filter(item=>!gone.has(String(item.rid)));
+  msgs=msgs.filter(item=>!gone.has(String(item.rid)));
+  if(gone.has(String(S.th)))S.th=0;
+  if(gone.has(String(S.pv)))S.pv=0;
+  S.res=null;
+  save();
 }
