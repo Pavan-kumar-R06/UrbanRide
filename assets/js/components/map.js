@@ -1,20 +1,16 @@
 const zm=x=>{S.z=Math.max(1,Math.min(4,S.z+x));render()};
-const pn=(a,b)=>{S.cx=Math.max(0,Math.min(100,S.cx+a*10/S.z));S.cy=Math.max(0,Math.min(100,S.cy+b*10/S.z));render()};
+const pn=(a,b)=>{if(S.z<=1)S.z=1.6;S.cx=Math.max(0,Math.min(100,S.cx+a*12/S.z));S.cy=Math.max(0,Math.min(100,S.cy+b*12/S.z));render()};
 const ly=k=>{S.lay[k]=!S.lay[k];render()};
-
-function carPos(r){
-  const n=r.path.length-1,p=Math.min(r.prog,.999)*n,s=Math.floor(p),f=p-s,a=P[r.path[s]],b=P[r.path[s+1]];
-  return[a[1]+(b[1]-a[1])*f,a[2]+(b[2]-a[2])*f];
-}
 
 /* ========================================================================= */
 /* REAL-WORLD CARTOGRAPHIC MAP ENGINE (MATCHING UPLOADED USER DESIGN)        */
 /* ========================================================================= */
 function mapSvg(o={}){
   const w=100/S.z, x=Math.max(0,Math.min(100-w,S.cx-w/2)), y=Math.max(0,Math.min(100-w,S.cy-w/2));
-  const L=S.lay, list=o.list||[], hi=o.hi, car=o.car;
+  const L=S.lay, list=o.list||[], hi=o.hi;
   const ln=p=>p.map(k=>P[k][1]+','+P[k][2]).join(' ');
-  const c=car&&carPos(car);
+  const selected=list.find(q=>q.id==hi);
+  const routeD=selected&&selected.path.length?selected.path.map((key,index)=>`${index?'L':'M'}${P[key][1]} ${P[key][2]}`).join(' '):'';
 
   // Helper for buttons
   const b=(l,f,t,dis)=>`<button class="btn g" ${dis?'disabled':''} onclick="${f}" aria-label="${t||l}" title="${dis?'Zoom in to enable map panning':t||l}">${l}</button>`;
@@ -119,9 +115,9 @@ function mapSvg(o={}){
       ${list.map(q=>`<polyline points="${ln(q.path)}" fill="none" stroke="#475569" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" opacity=".5"/>`).join('')}
 
       <!-- ACTIVE NAVIGATION ROUTE (Solid Crisp Cyan Dashed Line) -->
-      ${hi && list.find(q=>q.id==hi) ? `
-        <polyline points="${ln(list.find(q=>q.id==hi).path)}" fill="none" stroke="#0284c7" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
-        <polyline class="rt" points="${ln(list.find(q=>q.id==hi).path)}" fill="none" stroke="#38bdf8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+      ${selected ? `
+        <polyline points="${ln(selected.path)}" fill="none" stroke="#0284c7" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+        <polyline class="rt" points="${ln(selected.path)}" fill="none" stroke="#38bdf8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
       ` : ''}
 
       <!-- Walk Distance Connection -->
@@ -136,15 +132,13 @@ function mapSvg(o={}){
       ${pin(o.start,'#16a34a','A')}
       ${pin(o.end,'#dc2626','B')}
 
-      <!-- Completed trip endpoint marker -->
-      ${c?`
-        <circle class="pl" cx="${c[0]}" cy="${c[1]}" r="2.8" fill="#f59e0b"/>
-        <circle cx="${c[0]}" cy="${c[1]}" r="3.2" fill="#f59e0b" stroke="#ffffff" stroke-width=".9"/>
-        <g transform="translate(${c[0]-2.2},${c[1]-1.2})">
-          <rect width="4.4" height="2.4" rx=".6" fill="#ffffff"/>
-          <rect x=".7" y=".3" width="3" height="1" rx=".3" fill="#f59e0b"/>
-          <circle cx="1.1" cy="2.3" r=".4" fill="#000000"/>
-          <circle cx="3.3" cy="2.3" r=".4" fill="#000000"/>
+      ${o.animateCar&&routeD?`
+        <g class="moving-car" aria-label="Car moving along the trip route">
+          <animateMotion path="${routeD}" dur="14s" repeatCount="indefinite" rotate="auto"/>
+          <rect x="-2.8" y="-1.8" width="5.6" height="3.6" rx="1.1" fill="#f59e0b" stroke="#ffffff" stroke-width=".7"/>
+          <rect x="-1.6" y="-1.25" width="3.2" height="1.15" rx=".4" fill="#0c131d"/>
+          <circle cx="-1.6" cy="1.7" r=".55" fill="#0c131d" stroke="#ffffff" stroke-width=".25"/>
+          <circle cx="1.6" cy="1.7" r=".55" fill="#0c131d" stroke="#ffffff" stroke-width=".25"/>
         </g>
       `:''}
 
@@ -165,10 +159,10 @@ function mapSvg(o={}){
       ${b('+','zm(1)','Zoom in')}
       ${b('−','zm(-1)','Zoom out')}
       <span class="map-pan-label">Pan</span><div class="map-pan-controls">
-        ${b('◀','pn(-1,0)','Pan map left',S.z<=1)}
-        ${b('▲','pn(0,-1)','Pan map up',S.z<=1)}
-        ${b('▼','pn(0,1)','Pan map down',S.z<=1)}
-        ${b('▶','pn(1,0)','Pan map right',S.z<=1)}
+        ${b('◀','pn(-1,0)','Pan map left')}
+        ${b('▲','pn(0,-1)','Pan map up')}
+        ${b('▼','pn(0,1)','Pan map down')}
+        ${b('▶','pn(1,0)','Pan map right')}
       </div>
       ${b('Reset','S.z=1;S.cx=50;S.cy=50;render()')}
       ${[['road','Roads'],['metro','Metro']].map(([k,l])=>`<button class="btn ${L[k]?'':'g'}" onclick="ly('${k}')">${l}</button>`).join('')}
@@ -178,52 +172,3 @@ function mapSvg(o={}){
   `;
 }
 
-const CITY_GEO={
-  ec:[12.839,77.677],hsr:[12.911,77.644],kor:[12.935,77.624],jay:[12.925,77.583],
-  mg:[12.975,77.606],ind:[12.978,77.641],mar:[12.956,77.701],wf:[12.970,77.750],
-  mal:[13.003,77.564],ya:[13.028,77.540],heb:[13.035,77.598]
-};
-let liveTrackingMap=null,liveTrackingMarker=null,liveTrackingRideId=null;
-
-function renderLiveTrackingMap(ride){
-  const element=$('live-map');
-  if(!element)return;
-  if(!window.L){
-    element.textContent='Map tiles are unavailable. Allow network access to load the live map.';
-    return;
-  }
-  const savedCenter=liveTrackingMap?liveTrackingMap.getCenter():null;
-  const savedZoom=liveTrackingMap?liveTrackingMap.getZoom():null;
-  const point=ride.location;
-  const locationIsFresh=point&&Date.now()-new Date(point.updatedAt).getTime()<90000;
-  if(liveTrackingMap)liveTrackingMap.remove();
-  liveTrackingMap=L.map(element,{scrollWheelZoom:false}).setView(savedCenter||CITY_GEO[ride.path[0]]||[12.9716,77.5946],savedZoom||12);
-  liveTrackingRideId=String(ride.id);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-    maxZoom:19,
-    attribution:'&copy; OpenStreetMap contributors'
-  }).addTo(liveTrackingMap);
-  const route=ride.path.map(key=>CITY_GEO[key]).filter(Boolean);
-  if(route.length>1)L.polyline(route,{color:'#0ea5e9',weight:5,opacity:.8}).addTo(liveTrackingMap);
-  const start=route[0],end=route[route.length-1];
-  if(start)L.circleMarker(start,{radius:6,color:'#fff',weight:2,fillColor:'#16a34a',fillOpacity:1}).addTo(liveTrackingMap).bindTooltip('Start');
-  if(end)L.circleMarker(end,{radius:6,color:'#fff',weight:2,fillColor:'#dc2626',fillOpacity:1}).addTo(liveTrackingMap).bindTooltip('Destination');
-  if(locationIsFresh){
-    const position=[point.lat,point.lng];
-    liveTrackingMarker=L.marker([point.lat,point.lng],{
-      icon:L.divIcon({className:'live-car-marker',html:'<span></span>',iconSize:[24,24],iconAnchor:[12,12]})
-    }).addTo(liveTrackingMap).bindTooltip('Driver location');
-    if(!savedCenter&&route.length>1)liveTrackingMap.fitBounds([...route,position],{padding:[24,24],maxZoom:13});
-    else if(!liveTrackingMap.getBounds().contains(position))liveTrackingMap.panTo(position);
-  }else{
-    liveTrackingMarker=null;
-  }
-  requestAnimationFrame(()=>liveTrackingMap&&liveTrackingMap.invalidateSize());
-}
-
-function destroyLiveTrackingMap(){
-  if(liveTrackingMap)liveTrackingMap.remove();
-  liveTrackingMap=null;
-  liveTrackingMarker=null;
-  liveTrackingRideId=null;
-}

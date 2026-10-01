@@ -21,7 +21,6 @@ const S={
   locationWatchId:null,
   gpsRideId:null,
   lastLocationSent:0,
-  liveRideId:null,
   aq:'',
   rf:'all',
   z:1,

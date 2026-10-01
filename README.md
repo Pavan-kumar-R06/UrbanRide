@@ -105,7 +105,7 @@ On its first database connection after this update, the server removes the proje
   - **Active Route**: Solid cyan line (`#0284c7`) with animated dash (`#38bdf8`), without fuzzy glow filters.
   - **City Hubs (`hubNode`)**: Sharp white ring nodes with dark centers and collision-free label positioning (Whitefield anchored to the left, MG Road elevated above pins).
   - **Map Pins (`pin`)**: Crisp emerald green `P` (Pickup) and crimson red `D` (Dropoff) pins.
-- **Live trip map**: Uses Leaflet and OpenStreetMap tiles. Drivers explicitly enable browser GPS sharing; location is visible only to the driver, confirmed passengers, and administrators. GPS requires HTTPS or localhost and user permission.
+- **Live trip map**: Uses the dark SVG city route map. When a ride becomes active, an animated car follows the planned route. Optional driver GPS sharing remains permission-based and visible only to the driver, confirmed passengers, and administrators.
 
 ### 3. Vehicle Verification & Admin Management (`assets/js/services/admin-users.js`, `assets/js/routes/admin-pages.js`)
 - **`setCar(u, c)`**: Attaches vehicle details to user profile with status `pending` and queues it into `vq`.
@@ -140,7 +140,6 @@ On its first database connection after this update, the server removes the proje
 - `PUT /api/users/:id`: Updates user status or vehicle verification.
 - `DELETE /api/users/:id`: Deletes a user and their rides, bookings, and ride messages; emergency reports are retained.
 - `GET /api/incidents`: Lists the latest 100 emergency reports for admins.
-- `GET /api/incidents/mine`: Lists reports filed by the user or linked to rides they own.
 - `POST /api/incidents`: Creates an emergency report with type, description, optional location, and linked ride.
 - `PUT /api/incidents/:id`: Records an admin resolution and notes.
 - `GET /api/rides`: Lists up to 100 of the most recently published rides.
