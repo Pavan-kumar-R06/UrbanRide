@@ -664,6 +664,28 @@ select:focus, input:focus, textarea:focus {
   font-size: 12px;
   font-weight: 700;
 }
+.live-map {
+  height: min(62vh, 540px);
+  min-height: 320px;
+  border: 1px solid var(--bd);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #e7ecef;
+  color: #263238;
+}
+.live-car-marker {
+  border: 0;
+  background: transparent;
+}
+.live-car-marker span {
+  display: block;
+  width: 18px;
+  height: 18px;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: #dc2626;
+  box-shadow: 0 1px 8px rgba(0,0,0,.5);
+}
 @keyframes toastIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }

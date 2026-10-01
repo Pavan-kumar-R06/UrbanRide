@@ -1,5 +1,12 @@
 const mongoose = require('mongoose');
 
+const locationSchema = new mongoose.Schema({
+  lat: { type: Number, required: true },
+  lng: { type: Number, required: true },
+  accuracy: { type: Number, default: null },
+  updatedAt: { type: Date, default: Date.now }
+}, { _id: false });
+
 const rideSchema = new mongoose.Schema({
   own: { type: String, default: null },
   drv: { type: String, required: true },
@@ -12,6 +19,7 @@ const rideSchema = new mongoose.Schema({
   rate: { type: Number, default: 8 },
   status: { type: String, default: 'scheduled' },
   prog: { type: Number, default: 0 },
+  location: { type: locationSchema, default: undefined },
   rt: { type: Number, default: 4.8 },
   pf: [{ type: String }],
   rep: { type: String, default: 'Once' },

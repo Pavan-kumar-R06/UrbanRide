@@ -213,7 +213,7 @@ Object.assign(V, {
             <div class="audit-stream-item">
               <span class="audit-dot"></span>
               <div style="flex:1">
-                <div>${l.t}</div>
+                <div>${esc(l.t)}</div>
                 <span class="mu">${ago(l.ts)}</span>
               </div>
             </div>
@@ -265,9 +265,9 @@ Object.assign(V, {
       const linkedRide=rides.find(ride=>String(ride.id)===String(i.rideId));
       const routeLabel=linkedRide?rn(linkedRide.path):i.rideRoute||'No linked ride';
       return `<div class="card">
-        <div class="row sp"><div><h3>${i.type==='unsafe'?'Personal safety':i.type==='vehicle'?'Vehicle issue':i.type==='medical'?'Medical emergency':i.type==='collision'?'Collision':'Other emergency'}</h3><span class="mu">Reported by ${i.by} · ${ago(new Date(i.createdAt||Date.now()).getTime())} · ${repeatCount} report(s) from this user</span></div>${tg(i.status,i.status==='open'?'r':'')}</div>
-        <p>${i.details}</p><p class="mu">Location: ${i.location||'Not provided'} · Ride: ${routeLabel}</p>
-        ${i.status==='resolved'?`<div class="tag">Resolution: ${i.resolution}${i.resolutionNote?' · '+i.resolutionNote:''}</div>`:`<div class="fg"><div><label for="resolution-${i._id}">Resolution</label><select id="resolution-${i._id}"><option value="">Choose outcome</option><option value="emergency-services-contacted">Emergency services contacted</option><option value="roadside-assistance-dispatched">Roadside assistance dispatched</option><option value="user-safe">User confirmed safe</option><option value="false-alarm">False alarm</option><option value="other">Other</option></select></div><div><label for="resolution-note-${i._id}">Admin notes</label><input id="resolution-note-${i._id}" placeholder="Actions taken or follow-up needed"></div></div><div class="row" style="margin-top:12px"><button class="btn s" onclick="resolveIncident('${i._id}')">Save resolution</button><button class="btn d s" onclick="deleteAdminUser('${i.uid}')">Delete reported user</button>${i.rideId?`<button class="btn d s" onclick="deleteAdminRide('${i.rideId}')">Delete linked ride</button>`:''}</div>`}
+        <div class="row sp"><div><h3>${i.type==='unsafe'?'Personal safety':i.type==='vehicle'?'Vehicle issue':i.type==='medical'?'Medical emergency':i.type==='collision'?'Collision':'Other emergency'}</h3><span class="mu">Reported by ${esc(i.by)} · ${ago(new Date(i.createdAt||Date.now()).getTime())} · ${repeatCount} report(s) from this user</span></div>${tg(i.status,i.status==='open'?'r':'')}</div>
+        <p>${esc(i.details)}</p><p class="mu">Location: ${esc(i.location||'Not provided')} · Ride: ${esc(routeLabel)}</p>
+        ${i.status==='resolved'?`<div class="tag">Resolution: ${esc(i.resolution)}${i.resolutionNote?' · '+esc(i.resolutionNote):''}</div>`:`<div class="fg"><div><label for="resolution-${i._id}">Resolution</label><select id="resolution-${i._id}"><option value="">Choose outcome</option><option value="emergency-services-contacted">Emergency services contacted</option><option value="roadside-assistance-dispatched">Roadside assistance dispatched</option><option value="user-safe">User confirmed safe</option><option value="false-alarm">False alarm</option><option value="other">Other</option></select></div><div><label for="resolution-note-${i._id}">Admin notes</label><input id="resolution-note-${i._id}" placeholder="Actions taken or follow-up needed"></div></div><div class="row" style="margin-top:12px"><button class="btn s" onclick="resolveIncident('${i._id}')">Save resolution</button><button class="btn d s" onclick="deleteAdminUser('${i.uid}')">Delete reported user</button>${i.rideId?`<button class="btn d s" onclick="deleteAdminRide('${i.rideId}')">Delete linked ride</button>`:''}</div>`}
       </div>`;
     }).join('')||empty('check','No emergency reports yet.'));
   },

@@ -18,6 +18,21 @@ router.get('/incidents', requireAdmin, async (req, res) => {
   }
 });
 
+router.get('/incidents/mine', async (req, res) => {
+  try {
+    const ownedRideIds = await Ride.find({ own: req.user.id }).distinct('_id');
+    const incidents = await Incident.find({
+      $or: [
+        { uid: req.user.id },
+        { rideId: { $in: ownedRideIds.map(String) } }
+      ]
+    }).sort({ createdAt: -1 }).limit(50).lean();
+    res.json(incidents);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch emergency updates.' });
+  }
+});
+
 router.post('/incidents', async (req, res) => {
   try {
     const { type, details, location = '', rideId = '' } = req.body;

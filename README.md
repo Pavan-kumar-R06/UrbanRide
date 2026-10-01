@@ -105,6 +105,7 @@ On its first database connection after this update, the server removes the proje
   - **Active Route**: Solid cyan line (`#0284c7`) with animated dash (`#38bdf8`), without fuzzy glow filters.
   - **City Hubs (`hubNode`)**: Sharp white ring nodes with dark centers and collision-free label positioning (Whitefield anchored to the left, MG Road elevated above pins).
   - **Map Pins (`pin`)**: Crisp emerald green `P` (Pickup) and crimson red `D` (Dropoff) pins.
+- **Live trip map**: Uses Leaflet and OpenStreetMap tiles. Drivers explicitly enable browser GPS sharing; location is visible only to the driver, confirmed passengers, and administrators. GPS requires HTTPS or localhost and user permission.
 
 ### 3. Vehicle Verification & Admin Management (`assets/js/services/admin-users.js`, `assets/js/routes/admin-pages.js`)
 - **`setCar(u, c)`**: Attaches vehicle details to user profile with status `pending` and queues it into `vq`.
@@ -124,7 +125,7 @@ On its first database connection after this update, the server removes the proje
 ### 5. Trip Completion & 1–5 Star Rating System (`assets/js/services/rides.js`, `assets/js/routes/user-pages.js`)
 - **`step(id)`**: Driver trip lifecycle manager: `scheduled` ➔ `boarding` ➔ `active` ➔ `completed`.
   - When trip completes, it notifies all confirmed passengers: `🎉 Trip Completed! Please rate your driver.`
-- **Trip status updates**: Drivers move a ride through boarding, active, and completed states; the app does not claim to provide live GPS tracking.
+- **Trip status updates**: Drivers move a ride through boarding, active, and completed states. Location sharing is a separate, driver-controlled action.
 - **`V.bookings()`**:
   - Displays distinct `🎉 Ride Completed` banner for finished trips.
   - Interactive **1 to 5 Star Rating** buttons for passengers.
@@ -139,11 +140,14 @@ On its first database connection after this update, the server removes the proje
 - `PUT /api/users/:id`: Updates user status or vehicle verification.
 - `DELETE /api/users/:id`: Deletes a user and their rides, bookings, and ride messages; emergency reports are retained.
 - `GET /api/incidents`: Lists the latest 100 emergency reports for admins.
+- `GET /api/incidents/mine`: Lists reports filed by the user or linked to rides they own.
 - `POST /api/incidents`: Creates an emergency report with type, description, optional location, and linked ride.
 - `PUT /api/incidents/:id`: Records an admin resolution and notes.
 - `GET /api/rides`: Lists up to 100 of the most recently published rides.
 - `POST /api/rides`: Persists a new ride.
 - `PUT /api/rides/:id`: Persists ride status and progress updates.
+- `PUT /api/rides/:id/location`: Saves GPS coordinates from the active driver.
+- `DELETE /api/rides/:id/location`: Stops location sharing and clears the last position.
 - `DELETE /api/rides/:id`: Deletes a ride and its associated bookings and messages for admins.
 - `GET /api/bookings`: Lists user bookings.
 - `POST /api/bookings`: Creates a seat reservation.

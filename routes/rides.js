@@ -10,9 +10,55 @@ const router = express.Router();
 router.get('/rides', async (req, res) => {
   try {
     const rides = await Ride.find().sort({ createdAt: -1 }).limit(100);
-    res.json(rides);
+    if (req.user.role === 'admin') return res.json(rides);
+    const rideIds = rides.map(ride => String(ride._id));
+    const passengerRides = await Booking.find({
+      pid: req.user.id,
+      rid: { $in: rideIds },
+      st: 'confirmed'
+    }).distinct('rid');
+    const visibleRideIds = new Set(passengerRides.map(String));
+    res.json(rides.map(ride => {
+      const data = ride.toObject();
+      if (String(ride.own) !== req.user.id && !visibleRideIds.has(String(ride._id))) delete data.location;
+      return data;
+    }));
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch rides.' });
+  }
+});
+
+router.put('/rides/:id/location', async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid ride id.' });
+    const { lat, lng, accuracy } = req.body;
+    if (!Number.isFinite(lat) || lat < -90 || lat > 90 || !Number.isFinite(lng) || lng < -180 || lng > 180 || (accuracy !== undefined && (!Number.isFinite(accuracy) || accuracy < 0))) {
+      return res.status(400).json({ error: 'Valid GPS coordinates and accuracy are required.' });
+    }
+    const ride = await Ride.findOne({
+      _id: req.params.id,
+      own: req.user.id,
+      status: { $in: ['boarding', 'active'] }
+    });
+    if (!ride) return res.status(404).json({ error: 'Only the driver of an active ride can share its location.' });
+    ride.location = { lat, lng, accuracy, updatedAt: new Date() };
+    await ride.save();
+    res.json({ location: ride.location });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update ride location.' });
+  }
+});
+
+router.delete('/rides/:id/location', async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid ride id.' });
+    const ride = await Ride.findOne({ _id: req.params.id, own: req.user.id });
+    if (!ride) return res.status(404).json({ error: 'Ride not found.' });
+    ride.location = undefined;
+    await ride.save();
+    res.json({ stopped: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to stop ride location sharing.' });
   }
 });
 

@@ -1,6 +1,7 @@
 const TOKEN_KEY='urbanride_access_token';
 const REMEMBERED_EMAIL_KEY='urbanride_remembered_email';
 let sharedDataSyncing=false;
+let myIncidentsSyncing=false;
 
 function getRememberedEmail(){
   try{return localStorage.getItem(REMEMBERED_EMAIL_KEY)||''}catch(e){return ''}
@@ -8,12 +9,29 @@ function getRememberedEmail(){
 
 async function rememberBrowserCredential(){
   const email=$('ae')&&$('ae').value.trim();
+  const password=$('ap')&&$('ap').value;
   const remember=$('remember-login')&&$('remember-login').checked;
-  if(!remember){localStorage.removeItem(REMEMBERED_EMAIL_KEY);return}
-  if(email)localStorage.setItem(REMEMBERED_EMAIL_KEY,email);
-  if(!email||!window.PasswordCredential||!navigator.credentials?.store)return;
   try{
-    await navigator.credentials.store(new PasswordCredential($('auth-form')));
+    if(!remember){localStorage.removeItem(REMEMBERED_EMAIL_KEY);return}
+    if(email)localStorage.setItem(REMEMBERED_EMAIL_KEY,email);
+  }catch(e){return}
+  if(!email||!password||!window.PasswordCredential||!navigator.credentials?.store)return;
+  try{
+    await navigator.credentials.store(new PasswordCredential({id:email,password}));
+  }catch(e){}
+}
+
+async function restoreBrowserCredential(){
+  if(!window.PasswordCredential||!navigator.credentials?.get)return;
+  try{
+    const credential=await navigator.credentials.get({password:true,mediation:'optional'});
+    if(!credential)return;
+    if($('ae')&&!$('ae').value)$('ae').value=credential.id||'';
+    if($('ap')&&!$('ap').value)$('ap').value=credential.password||'';
+    if($('remember-login')&&credential.password){
+      $('remember-login').checked=true;
+      S.rememberLogin=true;
+    }
   }catch(e){}
 }
 
@@ -54,20 +72,24 @@ async function restoreSession() {
   if (!token) {
     S.me = null;
     render();
+    void restoreBrowserCredential();
     return;
   }
 
   try {
     const data = await apiRequest('/auth/me');
     S.me = data.user;
+    S.isDataActive = true;
     sessionStorage.setItem(KEY + 'm', S.me.id);
     S.view = S.me.role === 'admin' ? 'ana' : 'find';
     render();
     await syncDatabaseData();
     if (S.me.role === 'admin') await syncAdminData();
+    else void refreshMyIncidents();
   } catch (err) {
     clearAuthSession();
     render();
+    void restoreBrowserCredential();
   }
 }
 
@@ -114,7 +136,7 @@ async function refreshSharedRideData(){
   sharedDataSyncing=true;
   try{
     const [storedRides,storedBookings]=await Promise.all([apiRequest('/rides'),apiRequest('/bookings')]);
-    const changed=mergeRemoteRecords(rides,storedRides,['status','prog','seats','rt'])|
+    const changed=mergeRemoteRecords(rides,storedRides,['status','prog','seats','rt','location'])|
       mergeRemoteRecords(bookings,storedBookings,['st','rated','seats','fare']);
     if(changed){
       save();
@@ -184,4 +206,64 @@ async function persistBookingChanges(booking, changes) {
     console.error('Booking update was not saved:', err.message);
     toast('Booking update could not be saved.');
   }
+}
+
+async function refreshMyIncidents(){
+  if(!S.me||S.me.role==='admin'||myIncidentsSyncing)return;
+  const userId=String(S.me.id);
+  myIncidentsSyncing=true;
+  try{
+    const updated=await apiRequest('/incidents/mine');
+    if(!S.me||String(S.me.id)!==userId)return;
+    const previous=new Map(myIncidents.map(incident=>[String(incident._id),incident.status]));
+    myIncidents=updated;
+    updated.forEach(incident=>{
+      if(previous.get(String(incident._id))==='open'&&incident.status==='resolved'){
+        toast('Emergency report resolved: '+incident.resolution.replaceAll('-',' ')+'.');
+      }
+    });
+    if(S.view==='notif')render();
+  }catch(err){console.warn('Emergency updates could not be refreshed:',err.message)}
+  finally{myIncidentsSyncing=false}
+}
+
+function startLocationSharing(rideId){
+  if(!navigator.geolocation)return toast('This browser cannot share GPS location.');
+  if(S.locationWatchId!==null&&String(S.gpsRideId)===String(rideId))return;
+  stopLocationSharing(false);
+  S.gpsRideId=String(rideId);
+  S.locationWatchId=navigator.geolocation.watchPosition(async position=>{
+    const now=Date.now();
+    if(now-S.lastLocationSent<8000)return;
+    S.lastLocationSent=now;
+    const ride=rides.find(item=>String(item.id)===String(rideId));
+    if(!ride)return;
+    const location={lat:position.coords.latitude,lng:position.coords.longitude,accuracy:position.coords.accuracy,updatedAt:new Date().toISOString()};
+    ride.location=location;
+    try{
+      await apiRequest('/rides/'+encodeURIComponent(String(rideId))+'/location',{method:'PUT',body:location});
+      if(S.view==='live')render();
+    }catch(err){toast(err.message||'GPS location could not be shared.');stopLocationSharing(false)}
+  },error=>{
+    const messages={1:'Allow location access in your browser to share your ride position.',2:'Your current position could not be determined.',3:'GPS request timed out. Try sharing again.'};
+    toast(messages[error.code]||'GPS location is unavailable.');
+    stopLocationSharing(false);
+  },{enableHighAccuracy:true,maximumAge:5000,timeout:20000});
+  toast('Location sharing started.');
+  render();
+}
+
+async function stopLocationSharing(clearRemote=true){
+  const rideId=S.gpsRideId;
+  if(S.locationWatchId!==null)navigator.geolocation?.clearWatch(S.locationWatchId);
+  S.locationWatchId=null;
+  S.gpsRideId=null;
+  S.lastLocationSent=0;
+  if(rideId&&clearRemote){
+    const ride=rides.find(item=>String(item.id)===String(rideId));
+    if(ride)delete ride.location;
+    try{await apiRequest('/rides/'+encodeURIComponent(rideId)+'/location',{method:'DELETE'})}
+    catch(err){toast(err.message||'Could not clear the shared location.')}
+  }
+  if(S.me&&S.view==='live')render();
 }

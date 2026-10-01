@@ -177,3 +177,53 @@ function mapSvg(o={}){
   </div>
   `;
 }
+
+const CITY_GEO={
+  ec:[12.839,77.677],hsr:[12.911,77.644],kor:[12.935,77.624],jay:[12.925,77.583],
+  mg:[12.975,77.606],ind:[12.978,77.641],mar:[12.956,77.701],wf:[12.970,77.750],
+  mal:[13.003,77.564],ya:[13.028,77.540],heb:[13.035,77.598]
+};
+let liveTrackingMap=null,liveTrackingMarker=null,liveTrackingRideId=null;
+
+function renderLiveTrackingMap(ride){
+  const element=$('live-map');
+  if(!element)return;
+  if(!window.L){
+    element.textContent='Map tiles are unavailable. Allow network access to load the live map.';
+    return;
+  }
+  const savedCenter=liveTrackingMap?liveTrackingMap.getCenter():null;
+  const savedZoom=liveTrackingMap?liveTrackingMap.getZoom():null;
+  const point=ride.location;
+  const locationIsFresh=point&&Date.now()-new Date(point.updatedAt).getTime()<90000;
+  if(liveTrackingMap)liveTrackingMap.remove();
+  liveTrackingMap=L.map(element,{scrollWheelZoom:false}).setView(savedCenter||CITY_GEO[ride.path[0]]||[12.9716,77.5946],savedZoom||12);
+  liveTrackingRideId=String(ride.id);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    maxZoom:19,
+    attribution:'&copy; OpenStreetMap contributors'
+  }).addTo(liveTrackingMap);
+  const route=ride.path.map(key=>CITY_GEO[key]).filter(Boolean);
+  if(route.length>1)L.polyline(route,{color:'#0ea5e9',weight:5,opacity:.8}).addTo(liveTrackingMap);
+  const start=route[0],end=route[route.length-1];
+  if(start)L.circleMarker(start,{radius:6,color:'#fff',weight:2,fillColor:'#16a34a',fillOpacity:1}).addTo(liveTrackingMap).bindTooltip('Start');
+  if(end)L.circleMarker(end,{radius:6,color:'#fff',weight:2,fillColor:'#dc2626',fillOpacity:1}).addTo(liveTrackingMap).bindTooltip('Destination');
+  if(locationIsFresh){
+    const position=[point.lat,point.lng];
+    liveTrackingMarker=L.marker([point.lat,point.lng],{
+      icon:L.divIcon({className:'live-car-marker',html:'<span></span>',iconSize:[24,24],iconAnchor:[12,12]})
+    }).addTo(liveTrackingMap).bindTooltip('Driver location');
+    if(!savedCenter&&route.length>1)liveTrackingMap.fitBounds([...route,position],{padding:[24,24],maxZoom:13});
+    else if(!liveTrackingMap.getBounds().contains(position))liveTrackingMap.panTo(position);
+  }else{
+    liveTrackingMarker=null;
+  }
+  requestAnimationFrame(()=>liveTrackingMap&&liveTrackingMap.invalidateSize());
+}
+
+function destroyLiveTrackingMap(){
+  if(liveTrackingMap)liveTrackingMap.remove();
+  liveTrackingMap=null;
+  liveTrackingMarker=null;
+  liveTrackingRideId=null;
+}

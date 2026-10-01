@@ -1,15 +1,5 @@
 /* AUTHENTICATION API                                                        */
 /* ========================================================================= */
-async function checkDataStoreStatus() {
-  try {
-    const data = await apiRequest('/status');
-    S.isDataActive = data.status === 'connected';
-    render();
-  } catch(e) {
-    S.isDataActive = false;
-  }
-}
-checkDataStoreStatus();
 
 async function login(){
   const e=$('ae').value.trim().toLowerCase(), p=$('ap').value;
@@ -36,8 +26,9 @@ async function login(){
     }
     const u = data.user;
     u.id = u.id || u._id;
-    await rememberBrowserCredential();
+    void rememberBrowserCredential();
     storeAuthSession(data.token, u);
+    S.isDataActive = true;
     const existing = users.find(x => x.email === u.email || x.id === u.id);
     if (existing) Object.assign(existing, u);
     else users.push(u);
@@ -47,9 +38,10 @@ async function login(){
     S.th = 0;
     S.loading = false;
     toast('Welcome back, ' + (u.name ? u.name.split(' ')[0] : 'User') + '!');
-    if (u.role === 'admin') await syncAdminData();
-    await syncDatabaseData();
     render();
+    void syncDatabaseData();
+    if (u.role === 'admin') void syncAdminData();
+    else void refreshMyIncidents();
   } catch (err) {
     S.err = 'Could not connect to the authentication service.';
     S.loading = false;

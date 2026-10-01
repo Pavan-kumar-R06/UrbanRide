@@ -25,6 +25,7 @@ async function register(){
       const uid = u.id || u._id || String(nid++);
       u.id = uid;
       storeAuthSession(data.token, u);
+      S.isDataActive = true;
       const existing = users.find(x => x.email === e || x.id === uid);
       if (existing) {
         Object.assign(existing, u);
@@ -75,4 +76,11 @@ async function addCar(){
     render();
   }catch(err){toast(err.message || 'Vehicle could not be registered.')}
 }
-function logout(){clearAuthSession();S.res=null;toast('Logged out successfully.');render()}
+function logout(){
+  if(S.locationWatchId!==null)void stopLocationSharing();
+  myIncidents=[];
+  clearAuthSession();
+  S.res=null;
+  toast('Logged out successfully.');
+  render();
+}

@@ -1,7 +1,7 @@
 const mins=t=>{let[a,b]=t.split(':');return+a*60+ +b},today=new Date().toISOString().slice(0,10),now=()=>new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
 const PF={ac:'AC',mu:'Music',ns:'No smoking',wo:'Women only',pt:'Pets ok'};
 let nid=1;
-let users=[],rides=[],bookings=[],waitlist=[],notes=[],log=[],msgs=[],incidents=[],vq=[];
+let users=[],rides=[],bookings=[],waitlist=[],notes=[],log=[],msgs=[],incidents=[],myIncidents=[],vq=[];
 const dt=n=>new Date(Date.now()-n*864e5).toISOString().slice(0,10);
 /* Application State */
 const S={
@@ -18,6 +18,10 @@ const S={
   big:0,
   sosOpen:false,
   sosRide:null,
+  locationWatchId:null,
+  gpsRideId:null,
+  lastLocationSent:0,
+  liveRideId:null,
   aq:'',
   rf:'all',
   z:1,
@@ -34,6 +38,7 @@ const S={
 
 const $=id=>document.getElementById(id);
 const jsArg=value=>JSON.stringify(value).replace(/"/g,'&quot;');
+const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const hc=n=>[...n].reduce((a,c)=>a+c.charCodeAt(0),0)%360;
 const av=n=>`<span class="av" style="background:#ffffff;color:#090a0f">${n[0]}</span>`;
 const hd=(t,s)=>`<h2>${t}</h2><p class="sub">${s}</p>`;

@@ -70,6 +70,7 @@ async function step(id){
   const r=rides.find(x=>x.id==id);
   const n={scheduled:'boarding',boarding:'active',active:'completed'}[r.status];
   r.status=n;
+  if(n==='completed'&&String(S.gpsRideId)===String(r.id))void stopLocationSharing();
   await persistRideChanges(r,{status:n,prog:n=='completed'?1:r.prog});
   if(n=='completed'){
     r.prog=1;
@@ -103,6 +104,7 @@ async function rateRide(bid, rid, stars){
 
 async function cancelRide(id){
   const r=rides.find(x=>x.id==id);
+  if(String(S.gpsRideId)===String(r.id))await stopLocationSharing();
   r.status='cancelled';
   await persistRideChanges(r,{status:'cancelled'});
   for (const b of bookings.filter(b=>b.rid==id&&['pending','confirmed'].includes(b.st))) {
@@ -124,6 +126,7 @@ async function sos(){
   try{
     const incident=await apiRequest('/incidents',{method:'POST',body:{type,details,location,rideId:S.sosRide?String(S.sosRide):''}});
     incidents.unshift(incident);
+    myIncidents.unshift(incident);
     S.sosOpen=false;
     logEv('Emergency report from '+S.me.name+': '+type);
     toast('Emergency report sent to the admin team.');
@@ -159,19 +162,25 @@ async function send(t){
   if(!tx)return;
   const r=rides.find(x=>x.id==S.th);
   if(!r)return;
-  const message={rid:String(r.id),uid:S.me.id,n:S.me.name,t:tx,tm:now()};
+  const message={id:'pending-'+Date.now(),rid:String(r.id),uid:S.me.id,n:S.me.name,t:tx,tm:now()};
+  msgs.push(message);
+  if(i)i.value='';
+  save();
+  render();
   if(r._id&&S.isDataActive){
     try{
       const stored=await apiRequest('/messages/'+encodeURIComponent(r._id),{method:'POST',body:{text:tx}});
-      Object.assign(message,stored,{rid:String(stored.rid),uid:String(stored.uid),id:String(stored._id),_id:String(stored._id)});
+      msgs=msgs.filter(item=>item!==message&&String(item._id||item.id)!==String(stored._id));
+      msgs.push({...stored,rid:String(stored.rid),uid:String(stored.uid),id:String(stored._id),_id:String(stored._id)});
+      save();
+      if(S.view==='chat')render();
     }catch(err){
+      msgs=msgs.filter(item=>item!==message);
+      save();
+      if(S.view==='chat')render();
       toast('Message could not be sent. Please try again.');
       console.error('Message send failed:',err.message);
       return;
     }
   }
-  msgs.push(message);
-  if(i)i.value='';
-  save();
-  render();
 }
