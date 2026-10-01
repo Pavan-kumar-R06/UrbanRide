@@ -47,8 +47,14 @@ find(){
   },
   live(){
     const id=S.me.id;let r=rides.find(x=>x.own==id&&['boarding','active'].includes(x.status));
-    if(!r){const b=bookings.find(x=>x.pid==id&&x.st=='confirmed'&&['scheduled','boarding','active','completed'].includes(rides.find(y=>y.id==x.rid).status));r=b&&rides.find(y=>y.id==b.rid)}
-    if(!r)return hd('Trip status','Status updates and emergency support for your ride.')+empty('pin','No active trip right now. Tracking activates when a driver confirms and starts your trip.','<button class="btn" onclick="go(\'find\')">Find a ride</button>');
+    if(!r){
+      const booking=bookings.find(item=>{
+        const ride=rides.find(candidate=>String(candidate.id)===String(item.rid));
+        return String(item.pid)===String(id)&&item.st==='confirmed'&&ride&&['scheduled','boarding','active','completed'].includes(ride.status);
+      });
+      r=booking&&rides.find(ride=>String(ride.id)===String(booking.rid));
+    }
+    if(!r)return hd('Trip status','Status updates and emergency support for your ride.')+`<div class="two"><div>${mapSvg()}<p class="mu">Your route and car appear here when a trip is active.</p></div><div>${empty('pin','No active trip right now. Tracking activates when a driver confirms and starts your trip.','<button class="btn" onclick="go(\'find\')">Find a ride</button>')}</div></div>`;
     const isOwner=String(r.own)===String(id),canShare=isOwner&&['boarding','active'].includes(r.status);
     const locationFresh=r.location&&Date.now()-new Date(r.location.updatedAt).getTime()<90000;
     const locationMessage=locationFresh?'Driver location updated '+ago(new Date(r.location.updatedAt).getTime())+(r.location.accuracy?' · accuracy about '+Math.round(r.location.accuracy)+' m':''):(isOwner?'Share your location to show the car on the map.':'Waiting for the driver to share GPS location.');
