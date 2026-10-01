@@ -77,7 +77,7 @@ async function syncDatabaseData() {
       apiRequest('/rides'),
       apiRequest('/bookings')
     ]);
-    S.isMongoActive = true;
+    S.isDataActive = true;
     const rideIds = new Set(storedRides.map(ride => String(ride._id)));
     const bookingIds = new Set(storedBookings.map(booking => String(booking._id)));
     rides = [
@@ -91,8 +91,8 @@ async function syncDatabaseData() {
     save();
     render();
   } catch (err) {
-    S.isMongoActive = false;
-    console.warn('Could not sync MongoDB data:', err.message);
+    S.isDataActive = false;
+    console.warn('Could not sync saved trip data:', err.message);
   }
 }
 
@@ -110,7 +110,7 @@ function mergeRemoteRecords(localRecords, remoteRecords, compareFields){
 }
 
 async function refreshSharedRideData(){
-  if(!S.me||!S.isMongoActive||sharedDataSyncing)return;
+  if(!S.me||!S.isDataActive||sharedDataSyncing)return;
   sharedDataSyncing=true;
   try{
     const [storedRides,storedBookings]=await Promise.all([apiRequest('/rides'),apiRequest('/bookings')]);
@@ -139,10 +139,6 @@ async function refreshSharedRideData(){
   }
 }
 
-async function advanceRideProgress(ride){
-  return apiRequest('/rides/'+ride._id+'/progress',{method:'POST',body:{}});
-}
-
 async function persistNewRide(ride) {
   try {
     const stored = await apiRequest('/rides', { method: 'POST', body: ride });
@@ -150,7 +146,7 @@ async function persistNewRide(ride) {
     ride._id = String(stored._id);
     return true;
   } catch (err) {
-    if (S.isMongoActive) throw err;
+    if (S.isDataActive) throw err;
     return false;
   }
 }
@@ -165,27 +161,27 @@ async function persistNewBooking(booking) {
     booking._id = String(stored._id);
     return true;
   } catch (err) {
-    if (S.isMongoActive) throw err;
+    if (S.isDataActive) throw err;
     return false;
   }
 }
 
 async function persistRideChanges(ride, changes) {
-  if (!S.isMongoActive || !ride._id) return;
+  if (!S.isDataActive || !ride._id) return;
   try {
     await apiRequest('/rides/' + ride._id, { method: 'PUT', body: changes });
   } catch (err) {
     console.error('Ride update was not saved:', err.message);
-    toast('Ride update could not be saved to MongoDB.');
+    toast('Ride update could not be saved.');
   }
 }
 
 async function persistBookingChanges(booking, changes) {
-  if (!S.isMongoActive || !booking._id) return;
+  if (!S.isDataActive || !booking._id) return;
   try {
     await apiRequest('/bookings/' + booking._id, { method: 'PUT', body: changes });
   } catch (err) {
     console.error('Booking update was not saved:', err.message);
-    toast('Booking update could not be saved to MongoDB.');
+    toast('Booking update could not be saved.');
   }
 }

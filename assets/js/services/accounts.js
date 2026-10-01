@@ -64,11 +64,15 @@ function setCar(u, c){
     vq.unshift({ name: carModel, owner: u.name, st: 'pending', uid: u.id });
   }
 }
-function addCar(){
-  const m = $('cm').value.trim();
-  if(!m) return toast('Enter your car model and registration number.');
-  setCar(S.me, m);
-  toast('Vehicle registered! Verification request sent to Admin.');
-  render();
+async function addCar(){
+  const input=$('cm'),m=input&&input.value.trim();
+  if(!m)return toast('Enter your car model and registration number.');
+  try{
+    const updated=await apiRequest('/users/'+encodeURIComponent(S.me.id),{method:'PUT',body:{car:{m,st:'pending'}}});
+    S.me.car=updated.car;
+    setCar(S.me,m);
+    toast('Vehicle submitted for admin verification.');
+    render();
+  }catch(err){toast(err.message || 'Vehicle could not be registered.')}
 }
 function logout(){clearAuthSession();S.res=null;toast('Logged out successfully.');render()}

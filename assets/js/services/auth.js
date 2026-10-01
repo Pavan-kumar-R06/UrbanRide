@@ -1,15 +1,15 @@
-/* MONGODB API HOOKS                                                         */
+/* AUTHENTICATION API                                                        */
 /* ========================================================================= */
-async function checkMongoStatus() {
+async function checkDataStoreStatus() {
   try {
     const data = await apiRequest('/status');
-    S.isMongoActive = data.status === 'connected';
+    S.isDataActive = data.status === 'connected';
     render();
   } catch(e) {
-    S.isMongoActive = false;
+    S.isDataActive = false;
   }
 }
-checkMongoStatus();
+checkDataStoreStatus();
 
 async function login(){
   const e=$('ae').value.trim().toLowerCase(), p=$('ap').value;

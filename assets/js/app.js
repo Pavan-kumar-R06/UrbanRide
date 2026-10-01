@@ -33,33 +33,6 @@ function render(){
   if(c)c.scrollTop=c.scrollHeight;
 }
 
-setInterval(async()=>{
-  if(!S.me)return;
-  let changed=false;
-  for(const ride of rides){
-    if(ride.status!=='active'||String(ride.own)!==String(S.me.id))continue;
-    const previousStatus=ride.status;
-    try{
-      if(ride._id&&S.isMongoActive){
-        const updated=await advanceRideProgress(ride);
-        Object.assign(ride,updated,{id:String(updated._id),_id:String(updated._id)});
-      }else{
-        ride.prog=Math.min(1,ride.prog+.02);
-        if(ride.prog>=1)ride.status='completed';
-      }
-      changed=true;
-      if(previousStatus!=='completed'&&ride.status==='completed'){
-        bookings.filter(booking=>booking.rid==ride.id&&booking.st=='confirmed').forEach(booking=>notify(booking.pid,'🎉 Trip Completed! Your ride '+rn(ride.path)+' is completed. Please rate your driver '+ride.drv+'.',ride.drv,'bookings'));
-        logEv('Trip completed: '+rn(ride.path)+' by '+ride.drv);
-      }
-    }catch(err){
-      console.warn('Ride progress update failed:',err.message);
-    }
-  }
-  if(S.isMongoActive&&['live','drive'].includes(S.view))await refreshSharedRideData();
-  if(changed&&['live','drive'].includes(S.view))render();
-},1000);
-
 try{
   load();
 }catch(e){}
@@ -79,6 +52,12 @@ document.addEventListener('keydown',e=>{
     render();
   }
 });
-setInterval(()=>{if(S.me&&S.isMongoActive&&['live','drive','bookings','chat'].includes(S.view))refreshSharedRideData()},2000);
-setInterval(()=>{if(S.me&&['notif','ana','live'].includes(S.view))render()},30000);
+setInterval(()=>{if(S.me&&S.isDataActive&&['live','drive','bookings','chat'].includes(S.view))refreshSharedRideData()},2000);
+setInterval(async()=>{
+  if(!S.me)return;
+  if(S.me.role==='admin'&&['ana','users','rides','inc','ver'].includes(S.view)){
+    await syncDatabaseData();
+    await syncAdminData();
+  }else if(['notif','live'].includes(S.view))render();
+},30000);
 restoreSession();

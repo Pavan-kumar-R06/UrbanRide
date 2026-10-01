@@ -18,7 +18,7 @@ router.get('/bookings', async (req, res) => {
         ]
       };
     }
-    const bookings = await Booking.find(query).sort({ createdAt: -1 });
+    const bookings = await Booking.find(query).sort({ createdAt: -1 }).limit(100);
     res.json(bookings);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch bookings.' });

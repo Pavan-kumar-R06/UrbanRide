@@ -7,13 +7,9 @@ function authV(){
   <div class="auth-page-wrap">
     <div class="auth-card">
       
-      <!-- Brand & MongoDB Badge -->
+      <!-- Brand -->
       <div class="auth-brand-row">
         ${brand(32)}
-        <div class="mongo-status-pill" title="${S.isMongoActive ? 'MongoDB connected and active' : 'Local database active'}">
-          <span class="mongo-dot" style="${S.isMongoActive ? 'background:#10b981;box-shadow:0 0 8px #10b981' : 'background:#94a3b8;box-shadow:none'}"></span>
-          <span>${S.isMongoActive ? 'MongoDB' : 'Demo DB'}</span>
-        </div>
       </div>
 
       <!-- EXACTLY 2 LOGINS: User Login vs Admin Login (Driver removed) -->
@@ -66,7 +62,7 @@ function authV(){
         <label>Email Address</label>
         <div class="auth-input-box">
           <span class="auth-field-icon">${ic('mail', 18)}</span>
-          <input id="ae" name="${isReg ? 'email' : 'username'}" type="email" autocomplete="${isReg ? 'email' : 'username'}" placeholder="name@domain.com" value="${isReg ? '' : isAdmin ? 'admin@urbanmobility.com' : getRememberedEmail() || 'aarav@demo.com'}">
+          <input id="ae" name="${isReg ? 'email' : 'username'}" type="email" autocomplete="${isReg ? 'email' : 'username'}" placeholder="name@domain.com" value="${isReg ? '' : getRememberedEmail()}">
         </div>
       </div>
 
@@ -95,7 +91,7 @@ function authV(){
 
       <!-- Submit Action Button -->
       <button type="submit" class="auth-action-btn" ${S.loading ? 'disabled' : ''}>
-        <span>${S.loading ? 'Verifying with MongoDB...' : isReg ? 'Create Free Account' : isAdmin ? 'Access Admin Console' : 'Sign In'}</span>
+        <span>${S.loading ? 'Signing in...' : isReg ? 'Create Account' : isAdmin ? 'Access Admin Console' : 'Sign In'}</span>
         ${ic('arrowRight', 18)}
       </button>
       </form>

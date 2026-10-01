@@ -2,12 +2,14 @@ const express = require('express');
 const mongoose = require('mongoose');
 const Ride = require('../models/Ride');
 const User = require('../models/User');
+const Booking = require('../models/Booking');
+const Message = require('../models/Message');
 
 const router = express.Router();
 
 router.get('/rides', async (req, res) => {
   try {
-    const rides = await Ride.find().sort({ createdAt: -1 });
+    const rides = await Ride.find().sort({ createdAt: -1 }).limit(100);
     res.json(rides);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch rides.' });
@@ -19,7 +21,7 @@ router.post('/rides', async (req, res) => {
     const user = await User.findById(req.user.id).select('name car blocked');
     if (!user || user.blocked) return res.status(403).json({ error: 'This account cannot publish rides.' });
     if (!user.car || user.car.st !== 'approved') {
-      return res.status(403).json({ error: 'An approved vehicle is required to publish a ride.' });
+      return res.status(403).json({ error: 'Your vehicle has not been verified by an administrator yet.' });
     }
     const fields = ['path', 'time', 'date', 'cap', 'seats', 'rate', 'pf', 'rep', 'note'];
     const rideData = Object.fromEntries(fields.filter(field => req.body[field] !== undefined).map(field => [field, req.body[field]]));
@@ -33,33 +35,6 @@ router.post('/rides', async (req, res) => {
     res.status(201).json(ride);
   } catch (err) {
     res.status(500).json({ error: 'Failed to create ride.' });
-  }
-});
-
-router.post('/rides/:id/progress', async (req, res) => {
-  try {
-    if (!mongoose.isValidObjectId(req.params.id)) {
-      return res.status(400).json({ error: 'Invalid ride id.' });
-    }
-    const ride = await Ride.findOneAndUpdate(
-      { _id: req.params.id, own: req.user.id, status: 'active', prog: { $lt: 1 } },
-      [
-        { $set: { prog: { $min: [1, { $add: [{ $ifNull: ['$prog', 0] }, 0.02] }] } } },
-        { $set: { status: { $cond: [{ $gte: ['$prog', 1] }, 'completed', '$status'] } } }
-      ],
-      { new: true }
-    );
-    if (ride) return res.json(ride);
-
-    const existing = await Ride.findById(req.params.id);
-    if (!existing) return res.status(404).json({ error: 'Ride not found.' });
-    if (req.user.role !== 'admin' && String(existing.own) !== req.user.id) {
-      return res.status(403).json({ error: 'Only this ride\'s driver can update its progress.' });
-    }
-    res.json(existing);
-  } catch (err) {
-    console.error('Ride progress error:', err);
-    res.status(500).json({ error: 'Failed to update ride progress.' });
   }
 });
 
@@ -80,6 +55,25 @@ router.put('/rides/:id', async (req, res) => {
     res.json(ride);
   } catch (err) {
     res.status(500).json({ error: 'Failed to update ride.' });
+  }
+});
+
+router.delete('/rides/:id', async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Administrator access required.' });
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid ride id.' });
+    const ride = await Ride.findById(req.params.id).select('_id');
+    if (!ride) return res.status(404).json({ error: 'Ride not found.' });
+    const rideId = String(ride._id);
+    await Promise.all([
+      Booking.deleteMany({ rid: rideId }),
+      Message.deleteMany({ rid: rideId }),
+      Ride.deleteOne({ _id: ride._id })
+    ]);
+    res.json({ deleted: true, rideId });
+  } catch (err) {
+    console.error('Ride deletion error:', err);
+    res.status(500).json({ error: 'Failed to delete ride and related records.' });
   }
 });
 

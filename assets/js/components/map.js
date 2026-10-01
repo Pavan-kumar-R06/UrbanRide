@@ -17,7 +17,7 @@ function mapSvg(o={}){
   const c=car&&carPos(car);
 
   // Helper for buttons
-  const b=(l,f,t,dis)=>`<button class="btn g" ${dis?'disabled':''} onclick="${f}" aria-label="${t||l}">${l}</button>`;
+  const b=(l,f,t,dis)=>`<button class="btn g" ${dis?'disabled':''} onclick="${f}" aria-label="${t||l}" title="${dis?'Zoom in to enable map panning':t||l}">${l}</button>`;
 
   // Clean vector Pin badge (Solid, high contrast, crisp)
   const pin=(k, col, t)=> {
@@ -64,7 +64,7 @@ function mapSvg(o={}){
       <div class="map-modal-top">
         <div class="map-modal-title">
           ${ic('route', 22)}
-          <span>Bengaluru City Transit &amp; Telemetry Map</span>
+          <span>Bengaluru City Ride Map</span>
         </div>
         <button class="btn d s" onclick="S.big=0;render();">✕ Close Map (Esc)</button>
       </div>
@@ -115,13 +115,6 @@ function mapSvg(o={}){
         <circle cx="52" cy="42" r="1.8" fill="none" stroke="#10b981" stroke-width="0.8"/>
       ` : ''}
 
-      <!-- REAL-TIME TRAFFIC CONGESTION OVERLAY (Toggleable) -->
-      ${L.traf ? `
-        <line x1="33" y1="74" x2="42" y2="60" stroke="#ef4444" stroke-width="2.2" stroke-linecap="round"/>
-        <line x1="64" y1="46" x2="77" y2="54" stroke="#f59e0b" stroke-width="2.2" stroke-linecap="round"/>
-        <line x1="52" y1="42" x2="50" y2="10" stroke="#10b981" stroke-width="1.8" stroke-linecap="round"/>
-      ` : ''}
-
       <!-- ALL SCHEDULED RIDE CORRIDORS -->
       ${list.map(q=>`<polyline points="${ln(q.path)}" fill="none" stroke="#475569" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" opacity=".5"/>`).join('')}
 
@@ -143,7 +136,7 @@ function mapSvg(o={}){
       ${pin(o.start,'#16a34a','A')}
       ${pin(o.end,'#dc2626','B')}
 
-      <!-- MOVING VEHICLE TELEMETRY -->
+      <!-- Completed trip endpoint marker -->
       ${c?`
         <circle class="pl" cx="${c[0]}" cy="${c[1]}" r="2.8" fill="#f59e0b"/>
         <circle cx="${c[0]}" cy="${c[1]}" r="3.2" fill="#f59e0b" stroke="#ffffff" stroke-width=".9"/>
@@ -171,12 +164,14 @@ function mapSvg(o={}){
     <div class="mc">
       ${b('+','zm(1)','Zoom in')}
       ${b('−','zm(-1)','Zoom out')}
-      ${b('◀','pn(-1,0)','Pan left',S.z<=1)}
-      ${b('▲','pn(0,-1)','Pan up',S.z<=1)}
-      ${b('▼','pn(0,1)','Pan down',S.z<=1)}
-      ${b('▶','pn(1,0)','Pan right',S.z<=1)}
+      <span class="map-pan-label">Pan</span><div class="map-pan-controls">
+        ${b('◀','pn(-1,0)','Pan map left',S.z<=1)}
+        ${b('▲','pn(0,-1)','Pan map up',S.z<=1)}
+        ${b('▼','pn(0,1)','Pan map down',S.z<=1)}
+        ${b('▶','pn(1,0)','Pan map right',S.z<=1)}
+      </div>
       ${b('Reset','S.z=1;S.cx=50;S.cy=50;render()')}
-      ${[['road','Roads'],['metro','Metro'],['traf','Traffic']].map(([k,l])=>`<button class="btn ${L[k]?'':'g'}" onclick="ly('${k}')">${l}</button>`).join('')}
+      ${[['road','Roads'],['metro','Metro']].map(([k,l])=>`<button class="btn ${L[k]?'':'g'}" onclick="ly('${k}')">${l}</button>`).join('')}
       <button class="btn ${S.big ? 'd' : ''}" onclick="S.big=!S.big;render()">${S.big ? '✕ Close Map' : '⛶ Expand Map'}</button>
     </div>
   </div>

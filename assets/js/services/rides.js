@@ -15,7 +15,7 @@ async function book(rid,f,t,fare,n){
   try {
     await persistNewBooking(booking);
   } catch(err) {
-    toast('Booking was not saved to MongoDB. Please try again.');
+    toast(err.message || 'Booking could not be saved. Please try again.');
     return;
   }
   r.seats-=n;
@@ -37,7 +37,7 @@ async function promote(r){
       await persistNewBooking(booking);
       bookings.push(booking);
     } catch(err) {
-      toast('Waitlisted booking could not be saved to MongoDB.');
+      toast('Waitlisted booking could not be saved.');
     }
     notify(x.pid,'A seat opened up! Your booking request is now with the driver.','System','bookings');
   }
@@ -45,7 +45,7 @@ async function promote(r){
 
 async function cancelB(id){
   const b=bookings.find(x=>x.id==id),r=rides.find(x=>x.id==b.rid);
-  b.st='cancelled';cancels++;
+  b.st='cancelled';
   if(r.status!='cancelled')r.seats+=b.seats;
   await persistBookingChanges(b,{st:b.st});
   await promote(r);
@@ -63,23 +63,6 @@ async function decide(id,ok){
   notify(b.pid,ok?'Your seat is confirmed for '+rn(r.path)+'.':'Your request for '+rn(r.path)+' was declined.',r.drv,'bookings');
   logEv((ok?'Accepted ':'Rejected ')+b.pn+' on '+rn(r.path));
   toast(ok?'Passenger accepted!':'Request declined.');
-  render();
-}
-
-async function simReq(id){
-  const r=rides.find(x=>x.id==id),p=r.path;
-  if(r.seats<1)return toast('Ride is already full.');
-  const booking={id:nid++,rid:id,pid:'3',pn:'Riya Nair',f:p[0],t:p[p.length-1],seats:1,fare:Math.round(km(p,0,p.length-1)*r.rate/(r.cap-r.seats+2)),st:'pending'};
-  try {
-    await persistNewBooking(booking);
-  } catch(err) {
-    toast('Demo booking could not be saved to MongoDB.');
-    return;
-  }
-  r.seats--;
-  bookings.push(booking);
-  notify(S.me.id,'New booking request for '+rn(r.path)+'.','Riya Nair','drive');
-  toast('Demo request received from Riya Nair.');
   render();
 }
 
@@ -132,10 +115,20 @@ async function cancelRide(id){
   render();
 }
 
-function sos(){
-  incidents.unshift({id:nid++,type:'SOS alert',by:S.me.name,ride:0,st:'open'});
-  logEv('SOS alert from '+S.me.name);
-  toast('🚨 SOS broadcasted to admin and emergency contacts.');
+async function sos(){
+  const type=$('sos-type')?.value;
+  const details=$('sos-details')?.value.trim();
+  const location=$('sos-location')?.value.trim()||'';
+  if(!type)return toast('Choose the type of emergency.');
+  if(!details)return toast('Describe what is happening before sending the report.');
+  try{
+    const incident=await apiRequest('/incidents',{method:'POST',body:{type,details,location,rideId:S.sosRide?String(S.sosRide):''}});
+    incidents.unshift(incident);
+    S.sosOpen=false;
+    logEv('Emergency report from '+S.me.name+': '+type);
+    toast('Emergency report sent to the admin team.');
+    render();
+  }catch(err){toast(err.message || 'Emergency report could not be sent.')}
 }
 
 async function publish(){
@@ -147,13 +140,13 @@ async function publish(){
   try {
     savedToDatabase=await persistNewRide(ride);
   } catch(err) {
-    toast('Ride was not saved to MongoDB. Please try again.');
+    toast(err.message || 'Ride could not be published. Please try again.');
     return;
   }
   rides.push(ride);
   S.res=null;
   logEv(S.me.name+' published '+rn(path));
-  toast(savedToDatabase?'Ride published and saved to MongoDB.':'Ride published in local demo mode; MongoDB is offline.');
+  toast(savedToDatabase?'Ride published.':'Ride published locally; synchronization is unavailable.');
   S.view='drive';
   render();
 }
@@ -167,7 +160,7 @@ async function send(t){
   const r=rides.find(x=>x.id==S.th);
   if(!r)return;
   const message={rid:String(r.id),uid:S.me.id,n:S.me.name,t:tx,tm:now()};
-  if(r._id&&S.isMongoActive){
+  if(r._id&&S.isDataActive){
     try{
       const stored=await apiRequest('/messages/'+encodeURIComponent(r._id),{method:'POST',body:{text:tx}});
       Object.assign(message,stored,{rid:String(stored.rid),uid:String(stored.uid),id:String(stored._id),_id:String(stored._id)});

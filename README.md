@@ -1,6 +1,6 @@
 # UrbanRide — Smart Urban Mobility & Carpool Web Application
 
-A full-stack, real-world urban mobility platform with a monochrome minimalist design, crisp cartographic dark transit map, real-time telemetry simulation, MongoDB Atlas/Local integration, direct user-to-user chat, and an administrative governance dashboard.
+A full-stack urban mobility platform with a monochrome design, a cartographic transit map, ride status tracking, user-to-user chat, contextual emergency reports, and an administrative dashboard.
 
 ---
 
@@ -20,7 +20,7 @@ urbanride/
 │       ├── services/         # Authentication, account, admin, ride logic
 │       └── state/            # App data, state, and local persistence
 ├── models/                   # Mongoose data models, including persisted messages
-├── routes/                   # Express API routers: auth, users, rides, bookings, messages
+├── routes/                   # Express API routers: auth, users, rides, bookings, messages, incidents
 ├── .env.example              # Local environment variable template
 ├── .gitignore                # Excludes secrets and generated files
 ├── index.html                # Application markup
@@ -79,23 +79,19 @@ Passwords are bcrypt-hashed before storage. Existing plaintext passwords are upg
 
 ---
 
-## Development Demo Accounts
+## Administrator Access
 
-These accounts are seeded only outside production. Production databases are not initialized with known demo credentials. To grant an administrator role, register the account first, then promote it through a trusted MongoDB admin workflow.
+Set `ADMIN_EMAIL` and a unique `ADMIN_PASSWORD` of at least 12 characters in `.env` before starting the server to create an administrator account. Existing accounts are not silently promoted. Remove these environment values after the account has been created; password changes should be made through a trusted database administration workflow.
 
-| Role | Email | Password | Access / Capabilities |
-| :--- | :--- | :--- | :--- |
-| **Commuter / Driver** | `aarav@demo.com` | `demo123` | Find rides, book seats, track live GPS, chat |
-| **Verified Driver** | `meera@demo.com` | `demo123` | Offer rides, manage passenger requests, publish routes |
-| **Platform Administrator**| `admin@urbanmobility.com` | `admin123` | Dynamic Analytics KPI cards, User accounts, Vehicle verification queue |
+On its first database connection after this update, the server removes the project's former built-in demo accounts and their rides, bookings, and ride messages. It records this one-time cleanup so future user accounts are not affected.
 
 ---
 
 ## 🔍 Code Analysis & Function Breakdown
 
 ### 1. Authentication & 2-Role System (`assets/js/services/auth.js`, `assets/js/services/accounts.js`, `assets/js/components/auth-page.js`)
-- **`login()`**: Validates credentials against MongoDB `/api/auth/login`. Automatically directs Admins to the Analytics Dashboard (`V.ana`) and commuters to Find Rides (`V.find`). If Admin logs in, it triggers `syncAdminData()`.
-- **`register()`**: Supports optional vehicle details (`#av`). Creates a new account in MongoDB `/api/auth/register`. If a vehicle is provided, it automatically queues it into `vq` with status `pending` for Admin verification.
+- **`login()`**: Validates credentials against `/api/auth/login`. Automatically directs Admins to the Analytics Dashboard (`V.ana`) and commuters to Find Rides (`V.find`). If Admin logs in, it triggers `syncAdminData()`.
+- **`register()`**: Supports optional vehicle details (`#av`). Creates an account through `/api/auth/register`. If a vehicle is provided, it automatically queues it into `vq` with status `pending` for Admin verification.
 - **`authV()`**: Pure black & white centered auth card with dynamic car background, toggling between User and Admin logins.
 
 ### 2. Real-World Cartographic Map Engine (`assets/js/data/city-graph.js`, `assets/js/components/map.js`)
@@ -113,14 +109,14 @@ These accounts are seeded only outside production. Production databases are not 
 ### 3. Vehicle Verification & Admin Management (`assets/js/services/admin-users.js`, `assets/js/routes/admin-pages.js`)
 - **`setCar(u, c)`**: Attaches vehicle details to user profile with status `pending` and queues it into `vq`.
 - **`addCar()`**: Allows existing users to register a vehicle from Profile or Offer Ride.
-- **`syncAdminData()`**: Fetches all users and vehicle registrations from MongoDB `/api/users`, syncing local memory with MongoDB database records (such as newly registered users).
+- **`syncAdminData()`**: Fetches the latest users and emergency reports, syncing admin screens with persisted records.
 - **`V.ver()`**: Admin verification panel listing all pending vehicle registration requests with owner full names, car models, and one-click **Approve** / **Reject** buttons.
 - **`vset(i, s)`**: Admin action handler that approves or rejects a vehicle, updates user permissions, and sends an in-app notification.
 - **`V.users()`**: Complete administrative users table displaying avatar, full user name, email, vehicle registration details with verification badge, account status, and block/unblock controls.
 
 ### 4. Direct Commuter Chat (`assets/js/services/rides.js`, `assets/js/routes/user-pages.js`)
 - **`send(t)`**: Direct user-to-user messaging function.
-  - Messages are stored in MongoDB, scoped to ride participants, and polled into the other participant's open conversation without a page refresh.
+  - Messages are stored through the backend, scoped to ride participants, and polled into the other participant's open conversation without a page refresh.
   - **Automated bot replies removed**: Only messages explicitly typed and sent by users are recorded and displayed.
 - **`threads()`**: Filters ride-specific conversation channels for confirmed drivers and passengers.
 - **`V.chat()`**: Responsive messaging UI with message history, timestamps, and route headers.
@@ -128,7 +124,7 @@ These accounts are seeded only outside production. Production databases are not 
 ### 5. Trip Completion & 1–5 Star Rating System (`assets/js/services/rides.js`, `assets/js/routes/user-pages.js`)
 - **`step(id)`**: Driver trip lifecycle manager: `scheduled` ➔ `boarding` ➔ `active` ➔ `completed`.
   - When trip completes, it notifies all confirmed passengers: `🎉 Trip Completed! Please rate your driver.`
-- **`setInterval()` (Telemetry simulation)**: The driver's client advances trip progress through the server; other clients poll persisted progress and update the map while open.
+- **Trip status updates**: Drivers move a ride through boarding, active, and completed states; the app does not claim to provide live GPS tracking.
 - **`V.bookings()`**:
   - Displays distinct `🎉 Ride Completed` banner for finished trips.
   - Interactive **1 to 5 Star Rating** buttons for passengers.
@@ -136,17 +132,21 @@ These accounts are seeded only outside production. Production databases are not 
 - **`rateRide(bid, rid, stars)`**: Saves passenger rating to booking, updates driver average rating in user accounts, and posts notification log.
 
 ### 6. Backend API Routes (`routes/`)
-- `GET /api/status`: Checks database connection status and returns MongoDB readyState.
-- `POST /api/auth/register`: Creates new user document in MongoDB with hashed credentials and optional pending vehicle.
+- `GET /api/status`: Checks data-store connection readiness.
+- `POST /api/auth/register`: Creates a user account with hashed credentials and an optional pending vehicle.
 - `POST /api/auth/login`: Authenticates users and enforces role-based access control (Admin vs User).
 - `GET /api/users`: Returns registered users list (excluding password hashes) for Admin inspection.
-- `PUT /api/users/:id`: Updates user status or vehicle verification in MongoDB.
-- `GET /api/rides`: Lists all published rides.
-- `POST /api/rides`: Persists a new ride into MongoDB.
-- `PUT /api/rides/:id`: Persists ride status, seat count, and progress updates.
-- `POST /api/rides/:id/progress`: Advances the active ride for its authenticated driver.
+- `PUT /api/users/:id`: Updates user status or vehicle verification.
+- `DELETE /api/users/:id`: Deletes a user and their rides, bookings, and ride messages; emergency reports are retained.
+- `GET /api/incidents`: Lists the latest 100 emergency reports for admins.
+- `POST /api/incidents`: Creates an emergency report with type, description, optional location, and linked ride.
+- `PUT /api/incidents/:id`: Records an admin resolution and notes.
+- `GET /api/rides`: Lists up to 100 of the most recently published rides.
+- `POST /api/rides`: Persists a new ride.
+- `PUT /api/rides/:id`: Persists ride status and progress updates.
+- `DELETE /api/rides/:id`: Deletes a ride and its associated bookings and messages for admins.
 - `GET /api/bookings`: Lists user bookings.
-- `POST /api/bookings`: Creates a seat reservation in MongoDB.
+- `POST /api/bookings`: Creates a seat reservation.
 - `GET /api/messages/:rideId`: Lists persisted messages for an authorized ride participant.
 - `POST /api/messages/:rideId`: Stores a message from an authorized ride participant.
 - `PUT /api/bookings/:id`: Persists booking status and passenger rating updates.

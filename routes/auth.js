@@ -39,7 +39,7 @@ router.post('/register', async (req, res) => {
       ec: newUser.ec
     };
     res.status(201).json({
-      message: 'Account created successfully in MongoDB',
+      message: 'Account created successfully.',
       token: createAccessToken(newUser),
       user
     });
@@ -84,7 +84,7 @@ router.post('/login', async (req, res) => {
     }
 
     res.json({
-      message: 'Login successful via MongoDB',
+      message: 'Login successful.',
       token: createAccessToken(user),
       user: {
         id: user._id.toString(),

@@ -24,7 +24,8 @@ router.get('/messages/:rideId', async (req, res) => {
     if (!await canAccessConversation(req.params.rideId, req.user)) {
       return res.status(403).json({ error: 'You are not a participant in this ride conversation.' });
     }
-    const messages = await Message.find({ rid: String(req.params.rideId) }).sort({ createdAt: 1 }).lean();
+    const messages = await Message.find({ rid: String(req.params.rideId) }).sort({ createdAt: -1 }).limit(100).lean();
+    messages.reverse();
     res.json(messages.map(message => ({ ...message, id: String(message._id), _id: String(message._id) })));
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch ride messages.' });

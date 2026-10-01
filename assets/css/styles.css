@@ -124,27 +124,6 @@ body {
   color: #ffffff;
 }
 
-.mongo-status-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  padding: 4px 10px;
-  border-radius: 99px;
-  font-size: 11px;
-  font-weight: 700;
-  color: #ffffff;
-}
-.mongo-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #10b981;
-  box-shadow: 0 0 8px #10b981;
-  animation: pl 1.8s infinite;
-}
-
 /* User vs Admin Segmented Switcher */
 .auth-role-tabs {
   display: grid;
@@ -666,7 +645,7 @@ select:focus, input:focus, textarea:focus {
 .toast {
   position: fixed;
   right: 20px;
-  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  top: calc(20px + env(safe-area-inset-top, 0px));
   background: #ffffff;
   color: #000000;
   padding: 12px 20px;
@@ -675,6 +654,15 @@ select:focus, input:focus, textarea:focus {
   font-weight: 700;
   box-shadow: 0 12px 35px rgba(0, 0, 0, 0.7);
   animation: toastIn .2s ease-out;
+}
+.map-pan-controls {
+  display: inline-flex;
+  gap: 4px;
+}
+.map-pan-label {
+  color: var(--mu);
+  font-size: 12px;
+  font-weight: 700;
 }
 @keyframes toastIn {
   from { opacity: 0; transform: translateY(10px); }
