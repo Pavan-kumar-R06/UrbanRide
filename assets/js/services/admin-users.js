@@ -29,14 +29,26 @@ async function syncAdminData(){
           const carModel = typeof dbU.car === 'string' ? dbU.car : dbU.car.m;
           const carSt = (dbU.car && dbU.car.st) || 'pending';
           const inVq = vq.find(v => v.name === carModel || v.uid === uid);
+          // if (!inVq) {
+          //   vq.unshift({
+          //     name: carModel,
+          //     owner: dbU.name || 'User ' + uid.slice(-4),
+          //     st: carSt,
+          //     uid: uid
+          //   });
+          // }
           if (!inVq) {
-            vq.unshift({
-              name: carModel,
-              owner: dbU.name || 'User ' + uid.slice(-4),
-              st: carSt,
-              uid: uid
-            });
-          }
+  vq.unshift({
+    name: carModel,
+    owner: dbU.name || 'User ' + uid.slice(-4),
+    st: carSt,
+    uid: uid
+  });
+} else {
+  inVq.st = carSt;
+  inVq.owner = dbU.name || inVq.owner;
+  inVq.uid = uid;
+}
         }
       });
       if (['users','ver','ana'].includes(S.view)) render();

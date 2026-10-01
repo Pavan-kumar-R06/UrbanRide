@@ -290,17 +290,70 @@ Object.assign(V, {
   }
 });
 
-function vset(i,s){
-  const v=vq[i];
-  if(!v) return;
-  v.st=s;
-  const u=users.find(x=>x.id==v.uid || x.name==v.owner);
-  if(u){
-    if(!u.car) u.car={m:v.name,st:s};
-    else u.car.st=s;
-    notify(u.id,'Your vehicle '+v.name+' was '+s+' by Admin.','Admin','profile');
+// function vset(i,s){
+//   const v=vq[i];
+//   if(!v) return;
+//   v.st=s;
+//   const u=users.find(x=>x.id==v.uid || x.name==v.owner);
+//   if(u){
+//     if(!u.car) u.car={m:v.name,st:s};
+//     else u.car.st=s;
+//     notify(u.id,'Your vehicle '+v.name+' was '+s+' by Admin.','Admin','profile');
+//   }
+//   logEv('Vehicle '+v.name+' '+s+' for '+(v.owner||'user'));
+//   toast('Vehicle '+s+' for '+(v.owner||'user')+'.');
+//   render();
+// }
+
+async function vset(i, s) {
+  const v = vq[i];
+  if (!v) return;
+
+  const u = users.find(x => x.id == v.uid || x.name == v.owner);
+
+  if (!u) {
+    toast('User not found.');
+    return;
   }
-  logEv('Vehicle '+v.name+' '+s+' for '+(v.owner||'user'));
-  toast('Vehicle '+s+' for '+(v.owner||'user')+'.');
-  render();
+
+  try {
+    // Update the actual MongoDB User document
+    const updatedUser = await apiRequest('/users/' + u.id, {
+      method: 'PUT',
+      body: {
+        car: {
+          m: v.name,
+          st: s
+        }
+      }
+    });
+
+    // Update frontend state
+    v.st = s;
+    u.car = updatedUser.car || {
+      m: v.name,
+      st: s
+    };
+
+    // Notification
+    notify(
+      u.id,
+      'Your vehicle ' + v.name + ' was ' + s + ' by Admin.',
+      'Admin',
+      'profile'
+    );
+
+    logEv('Vehicle ' + v.name + ' ' + s + ' for ' + (v.owner || 'user'));
+
+    toast('Vehicle ' + s + ' for ' + (v.owner || 'user') + '.');
+
+    // Refresh data from MongoDB
+    await syncAdminData();
+
+    render();
+
+  } catch (err) {
+    console.error('Vehicle status update failed:', err);
+    toast('Failed to update vehicle status.');
+  }
 }
