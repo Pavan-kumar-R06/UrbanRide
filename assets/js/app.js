@@ -57,7 +57,7 @@ document.addEventListener('keydown',e=>{
     render();
   }
 });
-setInterval(()=>{if(S.me&&S.isDataActive&&['live','drive','bookings','chat'].includes(S.view))refreshSharedRideData()},5000);
+setInterval(()=>{if(S.me&&S.isDataActive&&['live','drive','bookings','chat'].includes(S.view))refreshSharedRideData()},2000);
 setInterval(async()=>{
   if(!S.me)return;
   if(S.me.role==='admin'&&['ana','users','rides','inc','ver'].includes(S.view)){
@@ -65,5 +65,4 @@ setInterval(async()=>{
     await syncAdminData();
   }else if(['notif','live'].includes(S.view))render();
 },30000);
-setInterval(()=>{if(S.me&&S.me.role!=='admin')refreshMyIncidents()},10000);
 restoreSession();

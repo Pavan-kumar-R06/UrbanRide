@@ -77,7 +77,7 @@ function authV(){
         </div>
       </div>
 
-      ${!isReg ? `<label class="auth-remember-login"><input id="remember-login" type="checkbox" ${S.rememberLogin||getRememberedEmail()?'checked':''} onchange="S.rememberLogin=this.checked"><span>Save credentials on this device</span></label>` : ''}
+      ${!isReg ? `<label class="auth-remember-login"><input id="remember-login" type="checkbox" ${S.rememberLogin||getRememberedEmail()?'checked':''} onchange="S.rememberLogin=this.checked"><span>Remember me on this device</span></label>` : ''}
 
       ${isReg ? `
       <div class="auth-field">
