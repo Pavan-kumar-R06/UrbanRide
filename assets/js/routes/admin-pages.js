@@ -310,15 +310,13 @@ async function vset(i, s) {
   if (!v) return;
 
   const u = users.find(x => x.id == v.uid || x.name == v.owner);
-
   if (!u) {
     toast('User not found.');
     return;
   }
 
   try {
-    // Update the actual MongoDB User document
-    const updatedUser = await apiRequest('/users/' + u.id, {
+    await apiRequest('/users/' + u.id, {
       method: 'PUT',
       body: {
         car: {
@@ -330,12 +328,12 @@ async function vset(i, s) {
 
     // Update frontend state
     v.st = s;
-    u.car = updatedUser.car || {
-      m: v.name,
-      st: s
-    };
+    if (!u.car) {
+      u.car = { m: v.name, st: s };
+    } else {
+      u.car.st = s;
+    }
 
-    // Notification
     notify(
       u.id,
       'Your vehicle ' + v.name + ' was ' + s + ' by Admin.',
@@ -347,13 +345,10 @@ async function vset(i, s) {
 
     toast('Vehicle ' + s + ' for ' + (v.owner || 'user') + '.');
 
-    // Refresh data from MongoDB
-    await syncAdminData();
-
     render();
 
   } catch (err) {
-    console.error('Vehicle status update failed:', err);
-    toast('Failed to update vehicle status.');
+    console.error('Vehicle approval error:', err);
+    toast('Failed to update vehicle.');
   }
 }
