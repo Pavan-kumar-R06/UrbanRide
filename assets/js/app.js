@@ -79,6 +79,6 @@ document.addEventListener('keydown',e=>{
     render();
   }
 });
-setInterval(()=>{if(S.me&&S.isMongoActive&&['live','drive','bookings'].includes(S.view))refreshSharedRideData()},2000);
+setInterval(()=>{if(S.me&&S.isMongoActive&&['live','drive','bookings','chat'].includes(S.view))refreshSharedRideData()},2000);
 setInterval(()=>{if(S.me&&['notif','ana','live'].includes(S.view))render()},30000);
 restoreSession();

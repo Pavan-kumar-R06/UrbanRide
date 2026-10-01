@@ -120,6 +120,17 @@ async function refreshSharedRideData(){
       save();
       if(['live','drive','bookings'].includes(S.view))render();
     }
+        if(S.view==='chat'&&S.th){
+          const messages=await apiRequest('/messages/'+encodeURIComponent(String(S.th)));
+          const messageIds=new Set(msgs.filter(message=>String(message.rid)===String(S.th)).map(message=>String(message._id||message.id)));
+          let messagesChanged=false;
+          messages.forEach(message=>{
+            if(messageIds.has(String(message._id)))return;
+            msgs.push(message);
+            messagesChanged=true;
+          });
+          if(messagesChanged){save();render()}
+        }
   }catch(err){
     if(!S.me)render();
     else console.warn('Live ride sync failed:',err.message);

@@ -19,8 +19,8 @@ urbanride/
 │       ├── routes/           # User and admin page renderers
 │       ├── services/         # Authentication, account, admin, ride logic
 │       └── state/            # App data, state, and local persistence
-├── models/                   # Mongoose data models
-├── routes/                   # Express API routers: auth, users, rides, status
+├── models/                   # Mongoose data models, including persisted messages
+├── routes/                   # Express API routers: auth, users, rides, bookings, messages
 ├── .env.example              # Local environment variable template
 ├── .gitignore                # Excludes secrets and generated files
 ├── index.html                # Application markup
@@ -120,14 +120,15 @@ These accounts are seeded only outside production. Production databases are not 
 
 ### 4. Direct Commuter Chat (`assets/js/services/rides.js`, `assets/js/routes/user-pages.js`)
 - **`send(t)`**: Direct user-to-user messaging function.
-  - **Automated bot replies removed**: No fake timer-generated messages. Only messages explicitly typed and sent by real users are recorded and displayed.
+  - Messages are stored in MongoDB, scoped to ride participants, and polled into the other participant's open conversation without a page refresh.
+  - **Automated bot replies removed**: Only messages explicitly typed and sent by users are recorded and displayed.
 - **`threads()`**: Filters ride-specific conversation channels for confirmed drivers and passengers.
 - **`V.chat()`**: Responsive messaging UI with message history, timestamps, and route headers.
 
 ### 5. Trip Completion & 1–5 Star Rating System (`assets/js/services/rides.js`, `assets/js/routes/user-pages.js`)
 - **`step(id)`**: Driver trip lifecycle manager: `scheduled` ➔ `boarding` ➔ `active` ➔ `completed`.
   - When trip completes, it notifies all confirmed passengers: `🎉 Trip Completed! Please rate your driver.`
-- **`setInterval()` (Telemetry simulation)**: Advances active trips along coordinate paths. Upon reaching 100% progress, sets status to `completed` and notifies passengers.
+- **`setInterval()` (Telemetry simulation)**: The driver's client advances trip progress through the server; other clients poll persisted progress and update the map while open.
 - **`V.bookings()`**:
   - Displays distinct `🎉 Ride Completed` banner for finished trips.
   - Interactive **1 to 5 Star Rating** buttons for passengers.
@@ -143,6 +144,9 @@ These accounts are seeded only outside production. Production databases are not 
 - `GET /api/rides`: Lists all published rides.
 - `POST /api/rides`: Persists a new ride into MongoDB.
 - `PUT /api/rides/:id`: Persists ride status, seat count, and progress updates.
+- `POST /api/rides/:id/progress`: Advances the active ride for its authenticated driver.
 - `GET /api/bookings`: Lists user bookings.
 - `POST /api/bookings`: Creates a seat reservation in MongoDB.
+- `GET /api/messages/:rideId`: Lists persisted messages for an authorized ride participant.
+- `POST /api/messages/:rideId`: Stores a message from an authorized ride participant.
 - `PUT /api/bookings/:id`: Persists booking status and passenger rating updates.

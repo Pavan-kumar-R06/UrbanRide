@@ -161,12 +161,24 @@ async function publish(){
 const tp=k=>{const a=S.cr.pf,i=a.indexOf(k);i>-1?a.splice(i,1):a.push(k);render()};
 const threads=()=>rides.filter(r=>r.own==S.me.id||bookings.some(b=>b.rid==r.id&&b.pid==S.me.id&&b.st!='cancelled'));
 
-function send(t){
+async function send(t){
   const i=$('ci'),tx=t||(i&&i.value.trim());
   if(!tx)return;
   const r=rides.find(x=>x.id==S.th);
   if(!r)return;
-  msgs.push({rid:r.id,uid:S.me.id,n:S.me.name,t:tx,tm:now()});
+  const message={rid:String(r.id),uid:S.me.id,n:S.me.name,t:tx,tm:now()};
+  if(r._id&&S.isMongoActive){
+    try{
+      const stored=await apiRequest('/messages/'+encodeURIComponent(r._id),{method:'POST',body:{text:tx}});
+      Object.assign(message,stored,{rid:String(stored.rid),uid:String(stored.uid),id:String(stored._id),_id:String(stored._id)});
+    }catch(err){
+      toast('Message could not be sent. Please try again.');
+      console.error('Message send failed:',err.message);
+      return;
+    }
+  }
+  msgs.push(message);
   if(i)i.value='';
+  save();
   render();
 }

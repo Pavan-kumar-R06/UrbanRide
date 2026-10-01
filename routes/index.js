@@ -7,6 +7,7 @@ router.use(require('./status'));
 router.use('/auth', require('./auth'));
 router.use(authenticateToken);
 router.use(require('./bookings'));
+router.use(require('./messages'));
 router.use('/users', requireAdmin, require('./users'));
 router.use(require('./rides'));
 
