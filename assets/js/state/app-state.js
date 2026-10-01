@@ -39,6 +39,12 @@ const $=id=>document.getElementById(id);
 const jsArg=value=>JSON.stringify(value).replace(/"/g,'&quot;');
 const hc=n=>[...n].reduce((a,c)=>a+c.charCodeAt(0),0)%360;
 const av=n=>`<span class="av" style="background:#ffffff;color:#090a0f">${n[0]}</span>`;
+const rideProgress=ride=>{
+  if(!ride)return 0;
+  if(ride.status==='completed')return 1;
+  if(ride.status!=='active'||!ride.startedAt||!ride.estimatedDurationMinutes)return Math.max(0,Math.min(1,Number(ride.prog)||0));
+  return Math.max(0,Math.min(1,(Date.now()-new Date(ride.startedAt).getTime())/(Number(ride.estimatedDurationMinutes)*60000)));
+};
 const hd=(t,s)=>`<h2>${t}</h2><p class="sub">${s}</p>`;
 const so=v=>Object.keys(P).map(k=>`<option value="${k}" ${k==v?'selected':''}>${P[k][0]}</option>`).join('');
 const sc=(i,v,l,c='neutral')=>`<div class="card stat ${c}"><i>${ic(i,22)}</i><div><b>${v}</b><span class="mu">${l}</span></div></div>`;

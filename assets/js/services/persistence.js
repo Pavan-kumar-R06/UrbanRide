@@ -63,8 +63,9 @@ async function restoreSession() {
     sessionStorage.setItem(KEY + 'm', S.me.id);
     S.view = S.me.role === 'admin' ? 'ana' : 'find';
     render();
-    await syncDatabaseData();
-    if (S.me.role === 'admin') await syncAdminData();
+    const syncTasks=[syncDatabaseData()];
+    if(S.me.role==='admin')syncTasks.push(syncAdminData());
+    await Promise.all(syncTasks);
   } catch (err) {
     clearAuthSession();
     render();
@@ -113,12 +114,21 @@ async function refreshSharedRideData(){
   if(!S.me||!S.isDataActive||sharedDataSyncing)return;
   sharedDataSyncing=true;
   try{
-    const [storedRides,storedBookings]=await Promise.all([apiRequest('/rides'),apiRequest('/bookings')]);
-    const changed=mergeRemoteRecords(rides,storedRides,['status','prog','seats','rt','location'])|
+    const needsBookings=['drive','bookings'].includes(S.view);
+    const requests=[apiRequest('/rides')];
+    if(needsBookings)requests.push(apiRequest('/bookings'));
+    const [storedRides,storedBookings=[]]=await Promise.all(requests);
+    const previousStatuses=new Map(rides.map(ride=>[String(ride.id),ride.status]));
+    const changed=mergeRemoteRecords(rides,storedRides,['status','prog','seats','rt','location','startedAt','estimatedDurationMinutes'])|
       mergeRemoteRecords(bookings,storedBookings,['st','rated','seats','fare']);
     if(changed){
       save();
-      if(['live','drive','bookings'].includes(S.view))render();
+      if(['drive','bookings'].includes(S.view))render();
+      else if(S.view==='live'){
+        const statusChanged=rides.some(ride=>previousStatuses.has(String(ride.id))&&previousStatuses.get(String(ride.id))!==ride.status);
+        if(statusChanged)render();
+        else updateLiveRideProgress();
+      }
     }
         if(S.view==='chat'&&S.th){
           const messages=await apiRequest('/messages/'+encodeURIComponent(String(S.th)));
@@ -169,10 +179,13 @@ async function persistNewBooking(booking) {
 async function persistRideChanges(ride, changes) {
   if (!S.isDataActive || !ride._id) return;
   try {
-    await apiRequest('/rides/' + ride._id, { method: 'PUT', body: changes });
+    const updated=await apiRequest('/rides/' + ride._id, { method: 'PUT', body: changes });
+    Object.assign(ride,updated,{id:String(updated._id||ride.id),_id:String(updated._id||ride._id)});
+    return updated;
   } catch (err) {
     console.error('Ride update was not saved:', err.message);
     toast('Ride update could not be saved.');
+    return null;
   }
 }
 
@@ -193,14 +206,22 @@ function startLocationSharing(rideId){
   S.gpsRideId=String(rideId);
   S.locationWatchId=navigator.geolocation.watchPosition(async position=>{
     const now=Date.now();
-    if(now-S.lastLocationSent<8000)return;
+    if(now-S.lastLocationSent<3000)return;
     S.lastLocationSent=now;
     const ride=rides.find(item=>String(item.id)===String(rideId));
     if(!ride)return;
     const location={lat:position.coords.latitude,lng:position.coords.longitude,accuracy:position.coords.accuracy,updatedAt:new Date().toISOString()};
     ride.location=location;
     try{
-      await apiRequest('/rides/'+encodeURIComponent(String(rideId))+'/location',{method:'PUT',body:location});
+      const result=await apiRequest('/rides/'+encodeURIComponent(String(rideId))+'/location',{method:'PUT',body:location});
+      ride.location=result.location||null;
+      if(result.status)ride.status=result.status;
+      if(result.completedAt)ride.completedAt=result.completedAt;
+      if(ride.status==='completed'){
+        ride.prog=1;
+        stopLocationSharing(false);
+        toast('Trip completed at the destination.');
+      }
       if(S.view==='live')render();
     }catch(err){toast(err.message||'GPS location could not be shared.');stopLocationSharing(false)}
   },error=>{

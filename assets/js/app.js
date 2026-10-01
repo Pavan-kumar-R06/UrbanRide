@@ -1,3 +1,20 @@
+function updateLiveRideProgress(){
+  const progressText=$('trip-progress-text');
+  if(!progressText)return;
+  const ride=rides.find(item=>String(item.id)===progressText.dataset.rideId);
+  if(!ride)return;
+  const progress=rideProgress(ride),percentage=Math.round(progress*100);
+  progressText.textContent=percentage+'%';
+  const bar=$('trip-progress-bar');
+  if(bar)bar.style.width=percentage+'%';
+  const marker=$('trip-car-marker');
+  if(marker){
+    const fresh=ride.location&&Date.now()-new Date(ride.location.updatedAt).getTime()<90000;
+    const point=fresh?routePointForGps(ride.location,ride.path):routePointForProgress(progress,ride.path);
+    if(point)marker.setAttribute('transform',`translate(${point.x} ${point.y}) rotate(${point.angle})`);
+  }
+}
+
 function render(){
   const a=document.activeElement,id=a&&a.id,v=a&&a.value;
   const authValues=!S.me?['an','ae','ap','av'].reduce((values,key)=>{
@@ -53,11 +70,11 @@ document.addEventListener('keydown',e=>{
   }
 });
 setInterval(()=>{if(S.me&&S.isDataActive&&['live','drive','bookings','chat'].includes(S.view))refreshSharedRideData()},2000);
+setInterval(()=>{if(S.me&&S.view==='live')updateLiveRideProgress()},1000);
 setInterval(async()=>{
   if(!S.me)return;
   if(S.me.role==='admin'&&['ana','users','rides','inc','ver'].includes(S.view)){
-    await syncDatabaseData();
-    await syncAdminData();
+    await Promise.all([syncDatabaseData(),syncAdminData()]);
   }else if(['notif','live'].includes(S.view))render();
 },30000);
 restoreSession();

@@ -26,7 +26,7 @@ async function login(){
     }
     const u = data.user;
     u.id = u.id || u._id;
-    await rememberBrowserCredential();
+    void rememberBrowserCredential();
     storeAuthSession(data.token, u);
     const existing = users.find(x => x.email === u.email || x.id === u.id);
     if (existing) Object.assign(existing, u);
@@ -37,9 +37,10 @@ async function login(){
     S.th = 0;
     S.loading = false;
     toast('Welcome back, ' + (u.name ? u.name.split(' ')[0] : 'User') + '!');
-    if (u.role === 'admin') await syncAdminData();
-    await syncDatabaseData();
     render();
+    const syncTasks=[syncDatabaseData()];
+    if(u.role==='admin')syncTasks.push(syncAdminData());
+    void Promise.all(syncTasks);
   } catch (err) {
     S.err = 'Could not connect to the authentication service.';
     S.loading = false;

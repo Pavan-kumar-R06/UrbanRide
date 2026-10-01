@@ -154,7 +154,7 @@ async function publish(){
 }
 
 const tp=k=>{const a=S.cr.pf,i=a.indexOf(k);i>-1?a.splice(i,1):a.push(k);render()};
-const threads=()=>rides.filter(r=>r.own==S.me.id||bookings.some(b=>b.rid==r.id&&b.pid==S.me.id&&b.st!='cancelled'));
+const threads=()=>rides.filter(r=>String(r.own)===String(S.me.id)||bookings.some(b=>String(b.rid)===String(r.id)&&String(b.pid)===String(S.me.id)&&b.st!=='cancelled'));
 
 async function send(t){
   const i=$('ci'),tx=t||(i&&i.value.trim());

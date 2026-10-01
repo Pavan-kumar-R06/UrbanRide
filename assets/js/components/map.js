@@ -2,6 +2,53 @@ const zm=x=>{S.z=Math.max(1,Math.min(4,S.z+x));render()};
 const pn=(a,b)=>{if(S.z<=1)S.z=1.6;S.cx=Math.max(0,Math.min(100,S.cx+a*12/S.z));S.cy=Math.max(0,Math.min(100,S.cy+b*12/S.z));render()};
 const ly=k=>{S.lay[k]=!S.lay[k];render()};
 
+const CITY_GEO={
+  ec:[12.839,77.677],hsr:[12.911,77.644],kor:[12.935,77.624],jay:[12.925,77.583],
+  mg:[12.975,77.606],ind:[12.978,77.641],mar:[12.956,77.701],wf:[12.970,77.750],
+  mal:[13.003,77.564],ya:[13.028,77.540],heb:[13.035,77.598]
+};
+
+function routePointForGps(location,path){
+  if(!location||!Number.isFinite(Number(location.lat))||!Number.isFinite(Number(location.lng))||!path||path.length<2)return null;
+  const latitude=Number(location.lat),longitude=Number(location.lng),cos=Math.cos(latitude*Math.PI/180);
+  const point=[longitude*cos,latitude];
+  let nearest=null;
+  for(let index=0;index<path.length-1;index++){
+    const from=CITY_GEO[path[index]],to=CITY_GEO[path[index+1]],start=P[path[index]],end=P[path[index+1]];
+    if(!from||!to||!start||!end)continue;
+    const a=[from[1]*cos,from[0]],b=[to[1]*cos,to[0]],dx=b[0]-a[0],dy=b[1]-a[1];
+    const fraction=Math.max(0,Math.min(1,((point[0]-a[0])*dx+(point[1]-a[1])*dy)/(dx*dx+dy*dy||1)));
+    const distance=Math.hypot(point[0]-(a[0]+dx*fraction),point[1]-(a[1]+dy*fraction));
+    if(!nearest||distance<nearest.distance){
+      nearest={distance,x:start[1]+(end[1]-start[1])*fraction,y:start[2]+(end[2]-start[2])*fraction,angle:Math.atan2(end[2]-start[2],end[1]-start[1])*180/Math.PI};
+    }
+  }
+  return nearest;
+}
+
+function routePointForProgress(progress,path){
+  if(!path||path.length<2)return null;
+  const lengths=[];
+  let total=0;
+  for(let index=0;index<path.length-1;index++){
+    const from=P[path[index]],to=P[path[index+1]];
+    const length=from&&to?Math.hypot(to[1]-from[1],to[2]-from[2]):0;
+    lengths.push(length);
+    total+=length;
+  }
+  if(!total)return null;
+  let remaining=Math.max(0,Math.min(1,progress))*total;
+  for(let index=0;index<lengths.length;index++){
+    const from=P[path[index]],to=P[path[index+1]],length=lengths[index];
+    if(remaining<=length||index===lengths.length-1){
+      const part=length?Math.min(1,remaining/length):0;
+      return{x:from[1]+(to[1]-from[1])*part,y:from[2]+(to[2]-from[2])*part,angle:Math.atan2(to[2]-from[2],to[1]-from[1])*180/Math.PI};
+    }
+    remaining-=length;
+  }
+  return null;
+}
+
 /* ========================================================================= */
 /* REAL-WORLD CARTOGRAPHIC MAP ENGINE (MATCHING UPLOADED USER DESIGN)        */
 /* ========================================================================= */
@@ -10,7 +57,7 @@ function mapSvg(o={}){
   const L=S.lay, list=o.list||[], hi=o.hi;
   const ln=p=>p.map(k=>P[k][1]+','+P[k][2]).join(' ');
   const selected=list.find(q=>q.id==hi);
-  const routeD=selected&&selected.path.length?selected.path.map((key,index)=>`${index?'L':'M'}${P[key][1]} ${P[key][2]}`).join(' '):'';
+  const carPoint=o.location&&selected?routePointForGps(o.location,selected.path):selected&&typeof o.progress==='number'?routePointForProgress(o.progress,selected.path):null;
 
   // Helper for buttons
   const b=(l,f,t,dis)=>`<button class="btn g" ${dis?'disabled':''} onclick="${f}" aria-label="${t||l}" title="${dis?'Zoom in to enable map panning':t||l}">${l}</button>`;
@@ -132,9 +179,9 @@ function mapSvg(o={}){
       ${pin(o.start,'#16a34a','A')}
       ${pin(o.end,'#dc2626','B')}
 
-      ${o.animateCar&&routeD?`
-        <g class="moving-car" aria-label="Car moving along the trip route">
-          <animateMotion path="${routeD}" dur="14s" repeatCount="indefinite" rotate="auto"/>
+      ${carPoint?`
+        <g id="trip-car-marker" class="gps-car" transform="translate(${carPoint.x} ${carPoint.y}) rotate(${carPoint.angle})" aria-label="Car position on the trip route">
+          <circle class="pl" r="4.5" fill="#f59e0b" opacity=".28"/>
           <rect x="-2.8" y="-1.8" width="5.6" height="3.6" rx="1.1" fill="#f59e0b" stroke="#ffffff" stroke-width=".7"/>
           <rect x="-1.6" y="-1.25" width="3.2" height="1.15" rx=".4" fill="#0c131d"/>
           <circle cx="-1.6" cy="1.7" r=".55" fill="#0c131d" stroke="#ffffff" stroke-width=".25"/>

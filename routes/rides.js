@@ -6,11 +6,63 @@ const Booking = require('../models/Booking');
 const Message = require('../models/Message');
 
 const router = express.Router();
+const CITY_GEO={
+  ec:[12.839,77.677],hsr:[12.911,77.644],kor:[12.935,77.624],jay:[12.925,77.583],
+  mg:[12.975,77.606],ind:[12.978,77.641],mar:[12.956,77.701],wf:[12.970,77.750],
+  mal:[13.003,77.564],ya:[13.028,77.540],heb:[13.035,77.598]
+};
+let lastCompletionSweep=0;
+
+function distanceMeters(a,b){
+  const radians=value=>value*Math.PI/180;
+  const lat1=radians(a[0]),lat2=radians(b[0]),dLat=lat2-lat1,dLng=radians(b[1]-a[1]);
+  const h=Math.sin(dLat/2)**2+Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLng/2)**2;
+  return 6371000*2*Math.atan2(Math.sqrt(h),Math.sqrt(1-h));
+}
+
+function estimateDurationMinutes(path){
+  let distance=0;
+  for(let index=0;index<(path||[]).length-1;index++){
+    const from=CITY_GEO[path[index]],to=CITY_GEO[path[index+1]];
+    if(from&&to)distance+=distanceMeters(from,to)/1000;
+  }
+  return Math.max(8,Math.ceil(distance/35*60+5));
+}
+
+async function syncActiveRideProgress(){
+  if(Date.now()-lastCompletionSweep<2000)return;
+  lastCompletionSweep=Date.now();
+  const active=await Ride.find({status:'active'}).limit(100);
+  const progressById=new Map(),now=Date.now();
+  for(const ride of active){
+    if(!ride.startedAt){
+      ride.startedAt=new Date(now);
+      ride.estimatedDurationMinutes=estimateDurationMinutes(ride.path);
+      await ride.save();
+    }
+    const duration=Math.max(1,Number(ride.estimatedDurationMinutes||estimateDurationMinutes(ride.path)))*60000;
+    const progress=Math.max(0,Math.min(1,(now-new Date(ride.startedAt).getTime())/duration));
+    if(progress>=1){
+      ride.status='completed';
+      ride.completedAt=new Date(now);
+      ride.prog=1;
+      ride.location=undefined;
+      await ride.save();
+    }
+    progressById.set(String(ride._id),progress);
+  }
+  return progressById;
+}
 
 router.get('/rides', async (req, res) => {
   try {
+    const progressById=await syncActiveRideProgress()||new Map();
     const rides = await Ride.find().sort({ createdAt: -1 }).limit(100);
-    if (req.user.role === 'admin') return res.json(rides);
+    if (req.user.role === 'admin') return res.json(rides.map(ride=>{
+      const data=ride.toObject();
+      if(progressById.has(String(ride._id)))data.prog=progressById.get(String(ride._id));
+      return data;
+    }));
     const rideIds = rides.map(ride => String(ride._id));
     const passengerRides = await Booking.find({
       pid: req.user.id,
@@ -20,6 +72,7 @@ router.get('/rides', async (req, res) => {
     const visibleRideIds = new Set(passengerRides.map(String));
     res.json(rides.map(ride => {
       const data = ride.toObject();
+      if(progressById.has(String(ride._id)))data.prog=progressById.get(String(ride._id));
       if (String(ride.own) !== req.user.id && !visibleRideIds.has(String(ride._id))) delete data.location;
       return data;
     }));
@@ -41,9 +94,21 @@ router.put('/rides/:id/location', async (req, res) => {
       status: { $in: ['boarding', 'active'] }
     });
     if (!ride) return res.status(404).json({ error: 'Only the driver of an active ride can share its location.' });
-    ride.location = { lat, lng, accuracy, updatedAt: new Date() };
+    const now=new Date();
+    const destination=CITY_GEO[ride.path[ride.path.length-1]];
+    const arrived=destination&&distanceMeters([lat,lng],destination)<=Math.max(200,Math.min(500,accuracy||0));
+    const duration=Number(ride.estimatedDurationMinutes||estimateDurationMinutes(ride.path));
+    const timedOut=ride.status==='active'&&ride.startedAt&&now-new Date(ride.startedAt).getTime()>=duration*60000;
+    if((ride.status==='active'&&arrived)||timedOut){
+      ride.status='completed';
+      ride.completedAt=now;
+      ride.prog=1;
+      ride.location=undefined;
+    }else{
+      ride.location = { lat, lng, accuracy, updatedAt: now };
+    }
     await ride.save();
-    res.json({ location: ride.location });
+    res.json({ status: ride.status, completedAt: ride.completedAt, prog: ride.prog, location: ride.location||null });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update ride location.' });
   }
@@ -96,6 +161,17 @@ router.put('/rides/:id', async (req, res) => {
     }
     const fields = ['status', 'prog', 'rt'];
     const updates = Object.fromEntries(fields.filter(field => req.body[field] !== undefined).map(field => [field, req.body[field]]));
+    if(updates.status==='active'&&ride.status!=='active'){
+      ride.startedAt=new Date();
+      ride.completedAt=null;
+      ride.estimatedDurationMinutes=estimateDurationMinutes(ride.path);
+      ride.prog=0;
+    }
+    if(updates.status==='completed'){
+      ride.completedAt=new Date();
+      ride.prog=1;
+      ride.location=undefined;
+    }
     Object.assign(ride, updates);
     await ride.save();
     res.json(ride);

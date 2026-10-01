@@ -8,7 +8,7 @@ find(){
     <div><div class="card"><h3>Route preview${pv?': '+pv.r.drv:''}</h3>${mapSvg(pv?{list:[{id:pv.r.id,path:pv.r.path}],hi:pv.r.id,pick:pv.pick,drop:pv.drop,from:q.f}:{})}</div></div></div>`;
   },
   bookings(){
-    const mine=bookings.filter(b=>b.pid==S.me.id).slice(0,25),w=waitlist.filter(x=>x.pid==S.me.id).slice(0,20);
+    const mine=bookings.filter(b=>String(b.pid)===String(S.me.id)).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0)).slice(0,25),w=waitlist.filter(x=>String(x.pid)===String(S.me.id)).slice(0,20);
     const cl={pending:'w',confirmed:'',cancelled:'r','ride-cancelled':'r',rejected:'r'};
     return hd('My bookings','Track your seat requests, waitlist and completed trips.')+(mine.map(b=>{
       const r=rides.find(x=>x.id==b.rid);let ex='';
@@ -47,6 +47,7 @@ find(){
   },
   live(){
     const id=S.me.id;let r=rides.find(x=>x.own==id&&['boarding','active'].includes(x.status));
+    if(!r)r=rides.find(x=>String(x.own)===String(id)&&x.status==='completed');
     if(!r){
       const booking=bookings.find(item=>{
         const ride=rides.find(candidate=>String(candidate.id)===String(item.rid));
@@ -57,8 +58,9 @@ find(){
     if(!r)return hd('Trip status','Status updates and emergency support for your ride.')+`<div class="two"><div>${mapSvg()}<p class="mu">Your route and car appear here when a trip is active.</p></div><div>${empty('pin','No active trip right now. Tracking activates when a driver confirms and starts your trip.','<button class="btn" onclick="go(\'find\')">Find a ride</button>')}</div></div>`;
     const isOwner=String(r.own)===String(id),canShare=isOwner&&['boarding','active'].includes(r.status);
     const locationFresh=r.location&&Date.now()-new Date(r.location.updatedAt).getTime()<90000;
-    const locationMessage=locationFresh?'Driver location updated '+ago(new Date(r.location.updatedAt).getTime())+(r.location.accuracy?' · accuracy about '+Math.round(r.location.accuracy)+' m':''):(isOwner?'Share your location to show the car on the map.':'Waiting for the driver to share GPS location.');
-    return hd('Trip status',rn(r.path)+' · '+tg(r.status,'b'))+`<div class="two"><div>${mapSvg({list:[{id:r.id,path:r.path}],hi:r.id,start:r.path[0],end:r.path[r.path.length-1],animateCar:r.status==='active'})}<p class="mu">${locationMessage}</p></div><div><div class="card"><div class="row">${av(r.drv)}<div><h3>${r.drv}</h3><span class="mu">${r.veh}</span></div></div><p class="mu" style="margin-top:14px">${r.status==='active'?'The driver marked this ride in progress.':r.status==='completed'?'Trip completed.':'Waiting for the driver to start.'}</p>${canShare?`<p class="mu">Confirmed passengers can see your location while sharing is on.</p><button class="btn ${S.gpsRideId===String(r.id)?'d':''}" onclick="${S.gpsRideId===String(r.id)?'stopLocationSharing()':'startLocationSharing('+jsArg(r.id)+')'}">${S.gpsRideId===String(r.id)?'Stop location sharing':'Share my location'}</button>`:''}</div>
+    const locationMessage=locationFresh?'Driver location updated '+ago(new Date(r.location.updatedAt).getTime())+(r.location.accuracy?' · accuracy about '+Math.round(r.location.accuracy)+' m':''):r.status==='completed'?'Trip completed.':(isOwner?'Share your location to show the car on the map.':'Waiting for the driver to share GPS location.');
+    const progress=rideProgress(r);
+    return hd('Trip status',rn(r.path)+' · '+tg(r.status,'b'))+`<div class="two"><div>${mapSvg({list:[{id:r.id,path:r.path}],hi:r.id,start:r.path[0],end:r.path[r.path.length-1],progress,location:locationFresh?r.location:null})}<div class="row sp"><span class="mu">Trip progress</span><b id="trip-progress-text" data-ride-id="${r.id}">${Math.round(progress*100)}%</b></div><div class="bar"><i id="trip-progress-bar" style="width:${Math.round(progress*100)}%"></i></div><p class="mu">${locationMessage}</p></div><div><div class="card"><div class="row">${av(r.drv)}<div><h3>${r.drv}</h3><span class="mu">${r.veh}</span></div></div><p class="mu" style="margin-top:14px">${r.status==='active'?'The driver marked this ride in progress.':r.status==='completed'?'Trip completed.':'Waiting for the driver to start.'}</p>${canShare?`<p class="mu">Confirmed passengers can see your location while sharing is on.</p><button class="btn ${S.gpsRideId===String(r.id)?'d':''}" onclick="${S.gpsRideId===String(r.id)?'stopLocationSharing()':'startLocationSharing('+jsArg(r.id)+')'}">${S.gpsRideId===String(r.id)?'Stop location sharing':'Share my location'}</button>`:''}</div>
     <div class="card"><div class="row"><button class="btn d" onclick="S.sosOpen=!S.sosOpen;S.sosRide=${jsArg(r.id)};render()">SOS Emergency</button><button class="btn g" onclick="toast('Live trip link copied.')">Share trip</button><button class="btn g" onclick="S.th=${jsArg(r.id)};go('chat')">Message</button></div></div>
     ${S.sosOpen?`<div class="card"><h3>Emergency report</h3><p class="mu">Tell the response team what is happening. Include location details if you can.</p><div class="fg"><div><label for="sos-type">Emergency type</label><select id="sos-type"><option value="">Choose an emergency</option><option value="medical">Medical emergency</option><option value="collision">Collision or crash</option><option value="unsafe">Personal safety concern</option><option value="vehicle">Vehicle breakdown</option><option value="other">Other</option></select></div><div><label for="sos-location">Current location</label><input id="sos-location" maxlength="300" placeholder="Street, landmark, or pickup point"></div></div><label for="sos-details" style="margin-top:12px">What happened?</label><textarea id="sos-details" maxlength="1000" rows="3" placeholder="Describe the help you need"></textarea><div class="row" style="margin-top:12px"><button class="btn d" onclick="sos()">Send emergency report</button><button class="btn g" onclick="S.sosOpen=false;render()">Cancel</button></div></div>`:''}
     </div></div>`;
@@ -83,14 +85,18 @@ find(){
     }).join('')||empty('compass','You have not published any ride yet.','<button class="btn" onclick="go(\'offer\')">Offer a ride</button>'));
   },
   chat(){
-    const ths=threads();if(!ths.length)return hd('Messages','Ride-specific chat with drivers and passengers.')+empty('chat','No conversations yet.');
+    const ths=threads().map(ride=>{
+      const latest=msgs.filter(message=>String(message.rid)===String(ride.id)).reduce((time,message)=>Math.max(time,Date.parse(message.createdAt)||0),Date.parse(ride.createdAt)||0);
+      return{ride,latest};
+    }).sort((a,b)=>b.latest-a.latest).slice(0,5).map(item=>item.ride);
+    if(!ths.length)return hd('Messages','Ride-specific chat with drivers and passengers.')+empty('chat','No conversations yet.');
     const cur=ths.find(r=>r.id==S.th)||ths[0];S.th=cur.id;const ms=msgs.filter(m=>m.rid==cur.id);
     return hd('Messages','Ride-specific chat with drivers and passengers.')+`<div class="chat"><div>${ths.map(r=>`<div class="th ${r.id==cur.id?'on':''}" onclick="S.th=${jsArg(r.id)};render()"><b>${r.drv}</b><br><span class="mu">${rn(r.path)}</span></div>`).join('')}</div>
     <div class="card"><div class="row sp" style="margin-bottom:10px"><h3>${rn(cur.path)}</h3>${tg(cur.status,'b')}</div><div class="msgs">${ms.map(m=>`<div class="msg ${m.uid==S.me.id?'me':''}"><small>${m.n} · ${m.tm}</small>${m.t}</div>`).join('')||'<p class="mu">Say hello</p>'}</div>
     <div class="row" style="flex-wrap:nowrap"><input id="ci" placeholder="Type a message..." onkeydown="if(event.key=='Enter')send()"><button class="btn" onclick="send()">Send</button></div></div></div>`;
   },
   notif(){
-    const n=notes.filter(x=>x.uid==S.me.id).slice(0,30);
+    const n=notes.filter(x=>String(x.uid)===String(S.me.id)).sort((a,b)=>b.ts-a.ts).slice(0,30);
     return hd('Notifications','Platform alerts, passenger requests, and ride updates.')+`<div class="row" style="margin-bottom:14px"><button class="btn g s" onclick="notes.forEach(x=>{if(x.uid==S.me.id)x.read=1});render()">Mark all as read</button><span class="mu">${n.filter(x=>!x.read).length} unread</span></div>`+(n.map(x=>`<div class="card row sp" style="cursor:pointer;${x.read?'':'border-left:4px solid #38bdf8'}" onclick="notes.find(y=>y.id==${x.id}).read=1;go('${x.go||'notif'}')"><div class="row" style="flex-wrap:nowrap">${av(x.from)}<div><b>Notification</b><br><span class="mu">From <b>${x.from}</b></span><div style="margin-top:2px">${x.t}</div></div></div><span class="mu">${ago(x.ts)}</span></div>`).join('')||empty('bell','No notifications yet.'));
   },
   profile(){
