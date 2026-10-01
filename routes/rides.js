@@ -4,6 +4,7 @@ const Ride = require('../models/Ride');
 const User = require('../models/User');
 const Booking = require('../models/Booking');
 const Message = require('../models/Message');
+const hasActiveJourney = require('../middleware/active-journey');
 
 const router = express.Router();
 const CITY_GEO={
@@ -21,12 +22,7 @@ function distanceMeters(a,b){
 }
 
 function estimateDurationMinutes(path){
-  let distance=0;
-  for(let index=0;index<(path||[]).length-1;index++){
-    const from=CITY_GEO[path[index]],to=CITY_GEO[path[index+1]];
-    if(from&&to)distance+=distanceMeters(from,to)/1000;
-  }
-  return Math.max(8,Math.ceil(distance/35*60+5));
+  return 2;
 }
 
 async function syncActiveRideProgress(){
@@ -35,12 +31,18 @@ async function syncActiveRideProgress(){
   const active=await Ride.find({status:'active'}).limit(100);
   const progressById=new Map(),now=Date.now();
   for(const ride of active){
+    let timingChanged=false;
     if(!ride.startedAt){
       ride.startedAt=new Date(now);
-      ride.estimatedDurationMinutes=estimateDurationMinutes(ride.path);
-      await ride.save();
+      timingChanged=true;
     }
-    const duration=Math.max(1,Number(ride.estimatedDurationMinutes||estimateDurationMinutes(ride.path)))*60000;
+    const estimate=estimateDurationMinutes(ride.path);
+    if(!ride.estimatedDurationMinutes||ride.estimatedDurationMinutes>estimate){
+      ride.estimatedDurationMinutes=estimate;
+      timingChanged=true;
+    }
+    if(timingChanged)await ride.save();
+    const duration=Math.max(1,Number(ride.estimatedDurationMinutes||estimate))*60000;
     const progress=Math.max(0,Math.min(1,(now-new Date(ride.startedAt).getTime())/duration));
     if(progress>=1){
       ride.status='completed';
@@ -134,6 +136,9 @@ router.post('/rides', async (req, res) => {
     if (!user.car || user.car.st !== 'approved') {
       return res.status(403).json({ error: 'Your vehicle has not been verified by an administrator yet.' });
     }
+    if (await hasActiveJourney(req.user.id)) {
+      return res.status(409).json({ error: 'Complete your current trip before publishing another ride.' });
+    }
     const fields = ['path', 'time', 'date', 'cap', 'seats', 'rate', 'pf', 'rep', 'note'];
     const rideData = Object.fromEntries(fields.filter(field => req.body[field] !== undefined).map(field => [field, req.body[field]]));
     const ride = new Ride({
@@ -161,6 +166,9 @@ router.put('/rides/:id', async (req, res) => {
     }
     const fields = ['status', 'prog', 'rt'];
     const updates = Object.fromEntries(fields.filter(field => req.body[field] !== undefined).map(field => [field, req.body[field]]));
+    if (req.user.role !== 'admin' && ['boarding','active'].includes(updates.status) && await hasActiveJourney(req.user.id, ride._id)) {
+      return res.status(409).json({ error: 'Complete your current trip before starting another one.' });
+    }
     if(updates.status==='active'&&ride.status!=='active'){
       ride.startedAt=new Date();
       ride.completedAt=null;

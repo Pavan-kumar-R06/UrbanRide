@@ -25,6 +25,7 @@ async function register(){
       const uid = u.id || u._id || String(nid++);
       u.id = uid;
       storeAuthSession(data.token, u);
+      S.isDataActive = true;
       const existing = users.find(x => x.email === e || x.id === uid);
       if (existing) {
         Object.assign(existing, u);

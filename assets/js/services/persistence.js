@@ -22,19 +22,32 @@ async function apiRequest(path, { method = 'GET', body } = {}) {
   if (body) headers['Content-Type'] = 'application/json';
   const token = localStorage.getItem(TOKEN_KEY);
   if (token) headers.Authorization = 'Bearer ' + token;
-  const response = await fetch('/api' + path, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined
-  });
-  const data = await response.json().catch(() => ({}));
-  if (response.status === 401 && token) {
-    localStorage.removeItem(TOKEN_KEY);
-    sessionStorage.removeItem(KEY + 'm');
-    S.me = null;
+  const button=method!=='GET'&&!path.endsWith('/location')?document.activeElement?.closest('button'):null;
+  const wasDisabled=button&&button.disabled;
+  if(button&&!wasDisabled){
+    button.disabled=true;
+    button.setAttribute('aria-busy','true');
   }
-  if (!response.ok) throw new Error(data.error || 'Request failed.');
-  return data;
+  try{
+    const response = await fetch('/api' + path, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined
+    });
+    const data = await response.json().catch(() => ({}));
+    if (response.status === 401 && token) {
+      localStorage.removeItem(TOKEN_KEY);
+      sessionStorage.removeItem(KEY + 'm');
+      S.me = null;
+    }
+    if (!response.ok) throw new Error(data.error || 'Request failed.');
+    return data;
+  }finally{
+    if(button&&!wasDisabled){
+      button.disabled=false;
+      button.removeAttribute('aria-busy');
+    }
+  }
 }
 
 function storeAuthSession(token, user) {
@@ -60,11 +73,13 @@ async function restoreSession() {
   try {
     const data = await apiRequest('/auth/me');
     S.me = data.user;
+    S.isDataActive = true;
     sessionStorage.setItem(KEY + 'm', S.me.id);
     S.view = S.me.role === 'admin' ? 'ana' : 'find';
     render();
     const syncTasks=[syncDatabaseData()];
     if(S.me.role==='admin')syncTasks.push(syncAdminData());
+    else void refreshMessageNotifications();
     await Promise.all(syncTasks);
   } catch (err) {
     clearAuthSession();
@@ -107,7 +122,39 @@ function mergeRemoteRecords(localRecords, remoteRecords, compareFields){
     if(compareFields.some(field=>JSON.stringify(current[field])!==JSON.stringify(normalized[field])))changed=true;
     Object.assign(current,normalized);
   });
+  localRecords.sort((a,b)=>new Date(b.createdAt||b.ts||0)-new Date(a.createdAt||a.ts||0));
   return changed;
+}
+
+async function refreshMessageNotifications(){
+  if(!S.me||S.me.role==='admin'||!S.isDataActive)return;
+  const userId=String(S.me.id),storageKey='urbanride_message_sync_'+userId;
+  const storedAfter=Number(localStorage.getItem(storageKey));
+  const after=Number.isFinite(storedAfter)&&storedAfter>0?storedAfter:Date.now()-300000;
+  const nextAfter=Date.now();
+  try{
+    const incoming=await apiRequest('/messages/inbox?after='+encodeURIComponent(after));
+    if(!S.me||String(S.me.id)!==userId)return;
+    let added=0;
+    incoming.forEach(message=>{
+      const messageId=String(message._id||message.id);
+      if(notes.some(note=>String(note.messageId||'')===messageId))return;
+      const threadId=String(message.rid),openNow=S.view==='chat'&&String(S.th)===threadId;
+      notes.unshift({
+        id:nid++,uid:userId,t:'New message from '+message.n+': '+message.t,
+        from:message.n,go:'chat',threadId,messageId,read:openNow,
+        ts:new Date(message.createdAt||nextAfter).getTime(),tm:message.tm
+      });
+      added++;
+      if(!msgs.some(item=>String(item._id||item.id)===messageId))msgs.push(message);
+    });
+    localStorage.setItem(storageKey,String(nextAfter));
+    if(added){
+      save();
+      render();
+      if(!incoming.every(message=>S.view==='chat'&&String(S.th)===String(message.rid)))toast(added===1?'New message from '+incoming[0].n:added+' new messages');
+    }
+  }catch(err){console.warn('Message notifications could not be refreshed:',err.message)}
 }
 
 async function refreshSharedRideData(){
@@ -121,6 +168,9 @@ async function refreshSharedRideData(){
     const previousStatuses=new Map(rides.map(ride=>[String(ride.id),ride.status]));
     const changed=mergeRemoteRecords(rides,storedRides,['status','prog','seats','rt','location','startedAt','estimatedDurationMinutes'])|
       mergeRemoteRecords(bookings,storedBookings,['st','rated','seats','fare']);
+    if(S.gpsRideId&&rides.some(ride=>String(ride.id)===String(S.gpsRideId)&&ride.status==='completed')){
+      stopLocationSharing(false);
+    }
     if(changed){
       save();
       if(['drive','bookings'].includes(S.view))render();

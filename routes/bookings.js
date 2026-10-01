@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const Booking = require('../models/Booking');
 const Ride = require('../models/Ride');
 const User = require('../models/User');
+const hasActiveJourney = require('../middleware/active-journey');
 
 const router = express.Router();
 
@@ -31,6 +32,9 @@ router.post('/bookings', async (req, res) => {
     const { rid, f, t, seats = 1, fare = 0 } = req.body;
     const passenger = await User.findById(req.user.id).select('name blocked');
     if (!passenger || passenger.blocked) return res.status(403).json({ error: 'This account cannot book rides.' });
+    if (await hasActiveJourney(req.user.id)) {
+      return res.status(409).json({ error: 'Complete your current trip before booking another ride.' });
+    }
     if (!rid || !f || !t || !Number.isInteger(Number(seats)) || Number(seats) < 1) {
       return res.status(400).json({ error: 'Ride, passenger, route, and a positive seat count are required.' });
     }

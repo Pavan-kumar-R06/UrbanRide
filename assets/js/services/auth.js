@@ -28,6 +28,7 @@ async function login(){
     u.id = u.id || u._id;
     void rememberBrowserCredential();
     storeAuthSession(data.token, u);
+    S.isDataActive = true;
     const existing = users.find(x => x.email === u.email || x.id === u.id);
     if (existing) Object.assign(existing, u);
     else users.push(u);
@@ -40,6 +41,7 @@ async function login(){
     render();
     const syncTasks=[syncDatabaseData()];
     if(u.role==='admin')syncTasks.push(syncAdminData());
+    else void refreshMessageNotifications();
     void Promise.all(syncTasks);
   } catch (err) {
     S.err = 'Could not connect to the authentication service.';

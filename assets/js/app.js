@@ -37,9 +37,10 @@ function render(){
 
   const me=S.me,
         pend=bookings.filter(b=>rides.some(r=>r.id==b.rid&&r.own==me.id)&&b.st=='pending').length,
-        nn=notes.filter(x=>x.uid==me.id&&!x.read).length;
+      unreadNotifications=notes.filter(note=>String(note.uid)===String(me.id)&&!note.read&&!note.messageId).length,
+      unreadMessages=notes.filter(note=>String(note.uid)===String(me.id)&&!note.read&&note.messageId).length;
 
-  $('root').innerHTML=`<div class="app"><aside><div class="logo">${brand(30)}</div>${(me.role=='admin'?ANAV:UNAV).map(x=>typeof x=='string'?`<div class="ns">${x}</div>`:`<button class="${S.view==x[0]?'on':''}" onclick="go('${x[0]}')">${ic(x[1])}<span>${x[2]}</span>${x[0]=='drive'&&pend?' '+tg(pend,'w'):''}${x[0]=='notif'&&nn?' '+tg(nn,'b'):''}</button>`).join('')}<div class="me">${av(me.name)}<div style="flex:1"><b>${me.name}</b><br><span class="mu">${me.role}</span></div><button class="btn g s" onclick="logout()">Logout</button></div></aside><main>${V[S.view]()}</main></div>`;
+    $('root').innerHTML=`<div class="app"><aside><div class="logo">${brand(30)}</div>${(me.role=='admin'?ANAV:UNAV).map(x=>typeof x=='string'?`<div class="ns">${x}</div>`:`<button class="${S.view==x[0]?'on':''}" onclick="go('${x[0]}')">${ic(x[1])}<span>${x[2]}</span>${x[0]=='drive'&&pend?' '+tg(pend,'w'):''}${x[0]=='notif'&&unreadNotifications?' '+tg(unreadNotifications,'b'):''}${x[0]=='chat'&&unreadMessages?' '+tg(unreadMessages,'b'):''}</button>`).join('')}<div class="me">${av(me.name)}<div style="flex:1"><b>${me.name}</b><br><span class="mu">${me.role}</span></div><button class="btn g s" onclick="logout()">Logout</button></div></aside><main>${V[S.view]()}</main></div>`;
 
   if(id&&$(id)&&v!=null&&a.tagName=='INPUT'&&['text','email'].includes(a.type)){
     $(id).value=v;
@@ -70,6 +71,7 @@ document.addEventListener('keydown',e=>{
   }
 });
 setInterval(()=>{if(S.me&&S.isDataActive&&['live','drive','bookings','chat'].includes(S.view))refreshSharedRideData()},2000);
+setInterval(()=>{if(S.me&&S.isDataActive)refreshMessageNotifications()},5000);
 setInterval(()=>{if(S.me&&S.view==='live')updateLiveRideProgress()},1000);
 setInterval(async()=>{
   if(!S.me)return;

@@ -6,6 +6,27 @@ const Ride = require('../models/Ride');
 
 const router = express.Router();
 
+router.get('/messages/inbox', async (req, res) => {
+  try {
+    const [ownedRideIds, bookedRideIds] = await Promise.all([
+      Ride.distinct('_id', { own: req.user.id }),
+      Booking.distinct('rid', { pid: req.user.id, st: { $nin: ['cancelled','rejected','ride-cancelled'] } })
+    ]);
+    const rideIds=[...new Set([...ownedRideIds,...bookedRideIds].map(String))];
+    if(!rideIds.length)return res.json([]);
+    const requestedAfter=Date.parse(req.query.after);
+    const after=new Date(Number.isFinite(requestedAfter)?requestedAfter:Date.now()-300000);
+    const messages=await Message.find({
+      rid:{$in:rideIds},
+      uid:{$ne:req.user.id},
+      createdAt:{$gt:after}
+    }).sort({createdAt:-1}).limit(50).lean();
+    res.json(messages.map(message=>({...message,id:String(message._id),_id:String(message._id)})));
+  }catch(err){
+    res.status(500).json({error:'Failed to fetch recent messages.'});
+  }
+});
+
 async function canAccessConversation(rideId, user) {
   if (user.role === 'admin') return true;
   if (mongoose.isValidObjectId(rideId)) {

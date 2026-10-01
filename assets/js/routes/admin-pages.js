@@ -255,7 +255,7 @@ Object.assign(V, {
     })) : empty('users', 'No users found.'));
   },
   rides(){
-    const f=S.rf,l=rides.filter(r=>f=='all'||r.status==f).slice(0,50);
+    const f=S.rf,l=rides.filter(r=>f=='all'||r.status==f).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0)).slice(0,50);
     return hd('Rides','Review the 50 most recent trips. Delete a ride to remove its bookings and messages.')+`<div class="row" style="margin-bottom:14px">${['all','scheduled','boarding','active','completed','cancelled'].map(s=>`<button class="chip ${f==s?'on':''}" onclick="S.rf='${s}';render()">${s} (${s=='all'?rides.length:rides.filter(r=>r.status==s).length})</button>`).join('')}</div>`+tb(['Driver','Route','Date','Seats','Status','Actions'],l.map(r=>[r.drv,rn(r.path),r.date+' '+r.time,(r.cap-r.seats)+'/'+r.cap,tg(r.status,r.status=='cancelled'?'r':'b'),`<div class="row">${r.status=='scheduled'?`<button class="btn g s" onclick="cancelRide(${jsArg(r.id)})">Cancel</button>`:''}<button class="btn d s" onclick="deleteAdminRide(${jsArg(r.id)})">Delete</button></div>`]));
   },
   inc(){
