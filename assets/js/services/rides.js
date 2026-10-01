@@ -220,3 +220,9 @@ async function send(t){
   save();
   render();
 }
+
+function threadTitle(r){
+  if(String(r.own)!==String(S.me.id))return r.drv;
+  const names=[...new Set(bookings.filter(b=>String(b.rid)===String(r.id)&&['pending','confirmed'].includes(b.st)).map(b=>b.pn))];
+  return names.length?names.join(', '):'No passengers yet';
+}
