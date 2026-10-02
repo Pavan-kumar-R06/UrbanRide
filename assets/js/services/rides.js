@@ -235,12 +235,27 @@ function canDeleteRide(r){
   if(r.status==='scheduled')return !bookings.some(b=>String(b.rid)===String(r.id)&&LIVE_BOOKING_STATUSES.includes(b.st));
   return true;
 }
+function confirmDialog(title,message,okLabel='Delete'){
+  return new Promise(resolve=>{
+    const overlay=document.createElement('div');
+    overlay.className='ur-dialog-overlay';
+    overlay.innerHTML=`<div class="ur-dialog card" role="dialog" aria-modal="true"><h3>${title}</h3><p class="mu">${message}</p><div class="row" style="justify-content:flex-end;margin-top:18px"><button class="btn g" data-r="0">Cancel</button><button class="btn d" data-r="1">${okLabel}</button></div></div>`;
+    const done=value=>{overlay.remove();document.removeEventListener('keydown',onKey);resolve(value)};
+    const onKey=e=>{if(e.key==='Escape')done(false)};
+    overlay.addEventListener('click',e=>{if(e.target===overlay)done(false);const v=e.target.closest('button')?.dataset.r;if(v!==undefined)done(v==='1')});
+    document.addEventListener('keydown',onKey);
+    document.body.append(overlay);
+    overlay.querySelector('[data-r="0"]').focus();
+  });
+}
 async function deleteMyRide(id){
   const ride=rides.find(item=>String(item.id)===String(id));
   if(!ride)return toast('Ride not found.');
   if(!canDeleteRide(ride))return toast('Cancel the ride first (or wait until it finishes) before deleting it.');
-  const note=ride.status==='completed'?' Its earnings and passenger history will be removed too.':'';
-  if(!confirm('Delete '+rn(ride.path)+'?'+note+' Its bookings and messages will be removed.'))return;
+  const detail=ride.status==='completed'
+    ?'This permanently removes the ride, its passenger history, earnings, and messages.'
+    :'This permanently removes the ride, its bookings, and messages.';
+  if(!await confirmDialog('Delete this ride?','<b>'+rn(ride.path)+'</b><br>'+detail))return;
   try{
     if(ride._id&&S.isDataActive)await apiRequest('/rides/'+encodeURIComponent(ride._id),{method:'DELETE'});
     removeRideRecords([String(id)]);
