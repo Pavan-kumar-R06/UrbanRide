@@ -51,10 +51,15 @@ Object.assign(V, {
         chartBars.push({ label: h + ':00', val: S.anaMetric === 'revenue' ? rVal : count });
       });
     } else {
-      const daysCount = rng === '7d' ? 7 : rng === '30d' ? 30 : 14;
+      const daysCount = rng === '7d' ? 7 : rng === '30d' ? 30 : (() => {
+        const first = rides.map(r => r.date).filter(Boolean).sort()[0];
+        const span = first ? Math.round((new Date(today + 'T00:00') - new Date(first + 'T00:00')) / 864e5) + 1 : 7;
+        return Math.max(7, Math.min(60, span));
+      })();
+      const dense = daysCount > 10;
       for (let i = daysCount - 1; i >= 0; i--) {
         const dStr = dt(i);
-        const dayLabel = new Date(dStr + 'T00:00').toLocaleDateString([], { weekday: 'short', month: 'numeric', day: 'numeric' });
+        const dayLabel = new Date(dStr + 'T00:00').toLocaleDateString([], dense ? { day: 'numeric', month: 'short' } : { weekday: 'short', month: 'numeric', day: 'numeric' });
         const count = rides.filter(r => r.date === dStr).length;
         const bks = bookings.filter(b => {
           const r = rides.find(x => x.id === b.rid);
@@ -130,14 +135,18 @@ Object.assign(V, {
           <span class="tag b">${rng.toUpperCase()}</span>
         </div>
         
-        <div class="ana-bars-container">
-          ${chartBars.length ? chartBars.map(b => `
-            <div class="ana-bar-col">
-              <span class="ana-bar-val">${S.anaMetric==='revenue' ? '₹' : ''}${b.val}</span>
-              <div class="ana-bar-fill ${S.anaMetric==='revenue' ? 'revenue' : ''}" style="height:${Math.max(8, (b.val / maxChartVal) * 100)}%"></div>
-              <span class="ana-bar-label">${b.label}</span>
-            </div>
-          `).join('') : '<p class="mu">No trip activity in this period.</p>'}
+        <div class="ana-bars-container" style="gap:${chartBars.length>30?2:chartBars.length>16?4:chartBars.length>10?7:12}px">
+          ${chartBars.length ? chartBars.map((b, i) => {
+            const n = chartBars.length, step = Math.ceil(n / 8), isRev = S.anaMetric === 'revenue';
+            const text = isRev ? '₹' + b.val : b.val;
+            const showVal = b.val > 0 && (n <= 16 || b.val === maxChartVal);
+            const showLabel = n <= 10 || (n - 1 - i) % step === 0;
+            return `<div class="ana-bar-col" title="${b.label}: ${text}">
+              ${showVal ? `<span class="ana-bar-val">${text}</span>` : ''}
+              <div class="ana-bar-fill ${isRev ? 'revenue' : ''} ${b.val > 0 ? '' : 'zero'}" style="height:${b.val > 0 ? Math.max(8, (b.val / maxChartVal) * 100) : 2}%"></div>
+              ${showLabel ? `<span class="ana-bar-label">${b.label}</span>` : ''}
+            </div>`;
+          }).join('') : '<p class="mu">No trip activity in this period.</p>'}
         </div>
         <p class="mu" style="margin:0;font-size:12px">Calculated from the latest recorded trips and bookings available.</p>
       </div>
@@ -369,7 +378,7 @@ async function resolveIncident(id){
 async function deleteAdminUser(id){
   const user=users.find(item=>String(item.id)===String(id));
   if(!user)return toast('User not found.');
-  if(!confirm('Delete '+user.name+' and remove their rides, bookings, and ride messages? Emergency reports will remain for audit.'))return;
+  if(!await confirmDialog('Delete this user?','<b>'+user.name+'</b><br>This permanently removes their rides, bookings, and ride messages. Emergency reports are kept for audit.','Delete user'))return;
   try{
     const result=await apiRequest('/users/'+encodeURIComponent(id),{method:'DELETE'});
     const deletedRideIds=new Set((result.rideIds||[]).map(String));
@@ -386,7 +395,7 @@ async function deleteAdminUser(id){
 async function deleteAdminRide(id){
   const ride=rides.find(item=>String(item.id)===String(id));
   if(!ride)return toast('Ride not found.');
-  if(!confirm('Delete this ride and its bookings and messages?'))return;
+  if(!await confirmDialog('Delete this ride?','<b>'+rn(ride.path)+'</b><br>This permanently removes the ride, its bookings, and messages.'))return;
   try{
     await apiRequest('/rides/'+encodeURIComponent(id),{method:'DELETE'});
     rides=rides.filter(item=>String(item.id)!==String(id));

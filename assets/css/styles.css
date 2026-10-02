@@ -1164,3 +1164,6 @@ svg.map {
 .ur-dialog{width:100%;max-width:400px;background:var(--s1,var(--bg));border:1px solid var(--bd);border-radius:16px;padding:22px}
 .ur-dialog h3{margin:0 0 8px}
 .ur-dialog p{margin:0;line-height:1.5}
+
+.ana-bar-col{min-width:0}
+.ana-bar-fill.zero{opacity:.35;border-radius:2px}
