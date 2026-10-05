@@ -12,6 +12,7 @@ async function activeBlockedEdges() {
   return list.filter(d => ['closure', 'accident', 'weather', 'traffic'].includes(d.kind)).map(d => [d.a, d.b].sort().join('-'));
 }
 
+
 async function openRidesFor(userId, role) {
   const [rides, nets, blocked] = await Promise.all([
     Ride.find({ status: 'scheduled', seats: { $gt: 0 } }).sort({ createdAt: -1 }).limit(200).lean(),
