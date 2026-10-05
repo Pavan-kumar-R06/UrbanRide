@@ -1,21 +1,27 @@
 {
   "name": "urbanride",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "UrbanRide Smart Urban Mobility Platform",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
+    "dev:client": "npm --prefix client run dev",
+    "install:client": "npm --prefix client install",
+    "build": "npm --prefix client install && npm --prefix client run build",
     "vercel:dev": "npx vercel dev",
     "vercel:deploy": "npx vercel",
     "vercel:deploy:production": "npx vercel --prod"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2",
+    "cors": "^2.8.6",
+    "dotenv": "^16.6.1",
+    "express": "^4.22.3",
     "jsonwebtoken": "^9.0.3",
-    "mongoose": "^8.4.1"
+    "mongoose": "^8.24.5"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }

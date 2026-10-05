@@ -3,6 +3,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 const bcrypt = require('bcryptjs');
 
 const User = require('./models/User');
@@ -16,7 +17,7 @@ const MONGO_URI = process.env.MONGO_URI || (process.env.NODE_ENV === 'production
 
 app.use(cors());
 app.use(express.json());
-app.use('/assets', express.static(path.join(__dirname, 'assets')));
+const DIST = path.join(__dirname, 'client', 'dist');
 
 async function migratePlaintextPasswords() {
   const legacyUsers = await User.find({ password: { $not: /^\$2[aby]\$/ } }).select('+password');
@@ -103,9 +104,14 @@ app.use('/api', async (req, res, next) => {
 });
 app.use('/api', require('./routes'));
 
-// Serve frontend
+// Serve the React frontend (built into client/dist by `npm run build`)
+if (fs.existsSync(DIST)) app.use(express.static(DIST));
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
+  const index = path.join(DIST, 'index.html');
+  if (!fs.existsSync(index)) {
+    return res.status(503).send('UrbanRide frontend has not been built yet. Run "npm run build" (or "npm run dev:client" for development).');
+  }
+  res.sendFile(index);
 });
 
 if (require.main === module) {

@@ -2,12 +2,17 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const { authenticateToken, createAccessToken } = require('../middleware/auth');
+const { normalizeVehicle } = require('../services/vehicles');
+const wallet = require('../services/wallet');
+
+const WELCOME_CREDIT = 500;
+const publicUser = u => ({ id: u._id.toString(), name: u.name, email: u.email, role: u.role, car: u.car, rating: u.rating, ec: u.ec, blocked: u.blocked, walletBalance: u.walletBalance || 0, trustedContacts: u.trustedContacts || [], createdAt: u.createdAt });
 
 const router = express.Router();
 
 router.post('/register', async (req, res) => {
   try {
-    const { name, email, password, car } = req.body;
+    const { name, email, password, car, vehicle } = req.body;
     if (!name || !email || !password) {
       return res.status(400).json({ error: 'Name, email, and password are required.' });
     }
@@ -25,19 +30,13 @@ router.post('/register', async (req, res) => {
       email: cleanEmail,
       password: await bcrypt.hash(password, 12),
       role: 'user',
-      car: car ? { m: car.trim(), st: 'pending' } : null
+      car: (vehicle || car) ? Object.assign(normalizeVehicle(vehicle || car) || {}, { st: 'pending' }) : null
     });
 
     await newUser.save();
-    const user = {
-      id: newUser._id.toString(),
-      name: newUser.name,
-      email: newUser.email,
-      role: newUser.role,
-      car: newUser.car,
-      rating: newUser.rating,
-      ec: newUser.ec
-    };
+    await wallet.post({ uid: newUser._id, type: 'credit', amount: WELCOME_CREDIT, note: 'Welcome credit' });
+    await wallet.post({ uid: 'platform', type: 'credit', amount: -WELCOME_CREDIT, note: 'Welcome credit issued' });
+    const user = publicUser(await User.findById(newUser._id));
     res.status(201).json({
       message: 'Account created successfully.',
       token: createAccessToken(newUser),
@@ -86,16 +85,7 @@ router.post('/login', async (req, res) => {
     res.json({
       message: 'Login successful.',
       token: createAccessToken(user),
-      user: {
-        id: user._id.toString(),
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        car: user.car,
-        rating: user.rating,
-        ec: user.ec,
-        blocked: user.blocked
-      }
+      user: publicUser(user)
     });
   } catch (err) {
     console.error('Login error:', err);
@@ -110,16 +100,7 @@ router.get('/me', authenticateToken, async (req, res) => {
       return res.status(401).json({ error: 'Account is unavailable. Please sign in again.' });
     }
     res.json({
-      user: {
-        id: user._id.toString(),
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        car: user.car,
-        rating: user.rating,
-        ec: user.ec,
-        blocked: user.blocked
-      }
+      user: publicUser(user)
     });
   } catch (err) {
     res.status(500).json({ error: 'Failed to restore session.' });

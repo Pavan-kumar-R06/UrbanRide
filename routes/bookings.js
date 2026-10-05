@@ -4,6 +4,11 @@ const Booking = require('../models/Booking');
 const Ride = require('../models/Ride');
 const User = require('../models/User');
 const hasActiveJourney = require('../middleware/active-journey');
+const wallet = require('../services/wallet');
+const { notifyUser } = require('../services/notify');
+const { handoverAfterLeg } = require('../services/ride-events');
+const { verifiedNetworkIds, rideVisible } = require('../services/networks');
+const { priceFor, km } = require('../services/city-graph');
 
 const router = express.Router();
 const CITY_GEO={
@@ -79,45 +84,60 @@ router.get('/bookings', async (req, res) => {
   }
 });
 
-router.post('/bookings', async (req, res) => {
+/* Shared by single bookings and by multi-vehicle journeys. Throws {status, error} on failure. */
+async function createBookingRecord(userId, body, extra = {}) {
   let reservedRideId;
+  const fail = (status, error) => Object.assign(new Error(error), { status });
   try {
-    const { rid, f, t, seats = 1, fare = 0, fee = 0 } = req.body;
-    const passenger = await User.findById(req.user.id).select('name blocked');
-    if (!passenger || passenger.blocked) return res.status(403).json({ error: 'This account cannot book rides.' });
-    if (await hasActiveJourney(req.user.id)) {
-      return res.status(409).json({ error: 'Complete your current trip before booking another ride.' });
-    }
-    if (!rid || !f || !t || !Number.isInteger(Number(seats)) || Number(seats) < 1) {
-      return res.status(400).json({ error: 'Ride, passenger, route, and a positive seat count are required.' });
-    }
-
-    if (![fare, fee].every(value => Number.isFinite(Number(value)) && Number(value) >= 0)) {
-      return res.status(400).json({ error: 'Fare and fee must be non-negative numbers.' });
-    }
-    let bookingStatus='pending';
+    const { rid, f, t, seats = 1, fare = 0, fee = 0 } = body;
+    const passenger = await User.findById(userId).select('name blocked role');
+    if (!passenger || passenger.blocked) throw fail(403, 'This account cannot book rides.');
+    if (await hasActiveJourney(userId) && !extra.skipActiveCheck) throw fail(409, 'Complete your current trip before booking another ride.');
+    if (!rid || !f || !t || !Number.isInteger(Number(seats)) || Number(seats) < 1) throw fail(400, 'Ride, passenger, route, and a positive seat count are required.');
+    if (![fare, fee].every(value => Number.isFinite(Number(value)) && Number(value) >= 0)) throw fail(400, 'Fare and fee must be non-negative numbers.');
+    const settings = await wallet.getSettings();
+    let chargeFare = Number(fare), chargeFee = Number(fee);
+    let bookingStatus = 'pending';
     if (mongoose.isValidObjectId(rid)) {
-      const candidateRide = await Ride.findById(rid).select('status seats');
-      if (!candidateRide) return res.status(404).json({ error: 'Ride not found.' });
-      if (candidateRide.status !== 'scheduled') return res.status(409).json({ error: 'This ride is not accepting bookings.' });
+      const candidateRide = await Ride.findById(rid).select('status seats path networkId own rate');
+      if (!candidateRide) throw fail(404, 'Ride not found.');
+      if (candidateRide.status !== 'scheduled') throw fail(409, 'This ride is not accepting bookings.');
+      if (String(candidateRide.own) === String(userId)) throw fail(400, 'You cannot book your own ride.');
+      const nets = await verifiedNetworkIds(userId);
+      if (!rideVisible(candidateRide, nets, userId, passenger.role)) throw fail(403, 'This ride is only open to verified members of a private network.');
+      const i = candidateRide.path.indexOf(f), j = candidateRide.path.indexOf(t);
+      if (i < 0 || j <= i) throw fail(400, 'Pickup and drop-off must be on the ride route, in order.');
+      const price = priceFor(km(candidateRide.path, i, j), candidateRide.rate, Number(seats)); // server is the source of truth for money
+      chargeFare = price.base; chargeFee = price.fee;
+      if (settings.mode === 'start' && !extra.skipBalanceCheck) {
+        const bal = ((await User.findById(userId).select('walletBalance').lean()) || {}).walletBalance || 0;
+        const need = chargeFare + chargeFee + (extra.alreadyCommitted || 0);
+        if (bal < need) throw fail(402, `Wallet balance ₹${bal} is below the fare ₹${need}. Top up your Mobility Wallet to book (rides are paid when they start).`);
+      }
       const ride = await Ride.findOneAndUpdate(
         { _id: rid, status: 'scheduled', seats: { $gte: Number(seats) } },
         { $inc: { seats: -Number(seats) } },
         { new: true }
       );
       if (!ride) {
-        const exists = await Ride.exists({ _id: rid });
-        if(!exists)return res.status(404).json({ error: 'Ride not found.' });
-        bookingStatus='waitlisted';
-      }else{
+        bookingStatus = 'waitlisted';
+      } else {
         reservedRideId = ride._id;
       }
     }
-
-    const booking = await Booking.create({ rid: String(rid), pid: req.user.id, pn: passenger.name, f, t, seats: Number(seats), fare: Number(fare), fee: Number(fee), st: bookingStatus });
-    res.status(201).json(booking);
+    const booking = await Booking.create({ rid: String(rid), pid: userId, pn: passenger.name, f, t, seats: Number(seats), fare: chargeFare, fee: chargeFee, st: bookingStatus, paymentMode: settings.mode, ...extra.fields });
+    return booking;
   } catch (err) {
-    if (reservedRideId) await Ride.updateOne({ _id: reservedRideId }, { $inc: { seats: Number(req.body.seats || 1) } });
+    if (reservedRideId) await Ride.updateOne({ _id: reservedRideId }, { $inc: { seats: Number(body.seats || 1) } });
+    throw err;
+  }
+}
+
+router.post('/bookings', async (req, res) => {
+  try {
+    res.status(201).json(await createBookingRecord(req.user.id, req.body));
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
     console.error('Booking creation error:', err);
     res.status(500).json({ error: 'Failed to create booking.' });
   }
@@ -136,6 +156,7 @@ router.post('/bookings/:id/complete-leg', async (req,res)=>{
     if(ride.status!=='completed'&&segmentProgress(ride,booking)<1)return res.status(409).json({error:'Your drop-off point has not been reached yet.'});
     booking.tripCompletedAt=new Date();
     await booking.save();
+    await handoverAfterLeg(booking);
     res.json(booking);
   }catch(err){res.status(500).json({error:'Failed to complete passenger trip.'})}
 });
@@ -169,9 +190,32 @@ router.put('/bookings/:id', async (req, res) => {
       return res.status(400).json({ error: 'A rating from 1 to 5 can be submitted by the passenger after ride completion.' });
     }
     const releaseSeats = st && ['cancelled', 'rejected', 'ride-cancelled'].includes(st) && !['cancelled', 'rejected', 'ride-cancelled','waitlisted'].includes(booking.st);
-    if (st !== undefined) booking.st = st;
+    const previousSt = booking.st;
+    if (st !== undefined) {
+      booking.st = st;
+      if (['confirmed', 'rejected'].includes(st)) booking.decidedAt = new Date();
+      if (['cancelled', 'rejected', 'ride-cancelled'].includes(st)) {
+        booking.cancelledAt = new Date();
+        booking.cancelledAfterConfirm = st === 'cancelled' && previousSt === 'confirmed';
+      }
+    }
     if (rated !== undefined) booking.rated = rated;
     await booking.save();
+    if (st === 'cancelled' && previousSt !== 'cancelled' && ride) {
+      const fullRide = await Ride.findById(booking.rid);
+      if (fullRide) await wallet.onPassengerCancel(fullRide, booking, previousSt === 'confirmed');
+      if (booking.journeyId) {
+        const siblings = await Booking.find({ journeyId: booking.journeyId, _id: { $ne: booking._id }, st: { $in: ['pending', 'confirmed'] } });
+        for (const sib of siblings) {
+          sib.st = 'cancelled'; sib.cancelledAt = new Date(); await sib.save();
+          await Ride.updateOne({ _id: sib.rid }, { $inc: { seats: sib.seats } });
+          await notifyUser(sib.pid, 'The other leg of your multi-vehicle journey was cancelled, so this leg was cancelled too.', 'Journey', 'bookings');
+        }
+      }
+    }
+    if (st === 'rejected' && booking.journeyId) {
+      await notifyUser(booking.pid, `A driver declined leg ${booking.legIndex + 1} of your multi-vehicle journey. Open My bookings to rebook that leg or cancel the journey.`, 'Journey', 'bookings');
+    }
 
     if (releaseSeats && ride && mongoose.isValidObjectId(booking.rid)) {
       await Ride.updateOne({ _id: booking.rid }, { $inc: { seats: booking.seats } });
@@ -184,3 +228,4 @@ router.put('/bookings/:id', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.createBookingRecord = createBookingRecord;

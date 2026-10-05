@@ -5,6 +5,10 @@ const User = require('../models/User');
 const Booking = require('../models/Booking');
 const Message = require('../models/Message');
 const hasActiveJourney = require('../middleware/active-journey');
+const Network = require('../models/Network');
+const { onStatusChange } = require('../services/ride-events');
+const { verifiedNetworkIds, rideVisible } = require('../services/networks');
+const { VEHICLE_TYPES } = require('../services/vehicles');
 
 const router = express.Router();
 const CITY_GEO={
@@ -50,6 +54,7 @@ async function syncActiveRideProgress(){
       ride.prog=1;
       ride.location=undefined;
       await ride.save();
+      await onStatusChange(ride,'active');
     }
     progressById.set(String(ride._id),progress);
   }
@@ -59,7 +64,11 @@ async function syncActiveRideProgress(){
 router.get('/rides', async (req, res) => {
   try {
     const progressById=await syncActiveRideProgress()||new Map();
-    const rides = await Ride.find().sort({ createdAt: -1 }).limit(100);
+    let rides = await Ride.find().sort({ createdAt: -1 }).limit(100);
+    if (req.user.role !== 'admin') {
+      const nets = await verifiedNetworkIds(req.user.id);
+      rides = rides.filter(ride => rideVisible(ride, nets, req.user.id, req.user.role));
+    }
     if (req.user.role === 'admin') return res.json(rides.map(ride=>{
       const data=ride.toObject();
       if(progressById.has(String(ride._id)))data.prog=progressById.get(String(ride._id));
@@ -101,7 +110,9 @@ router.put('/rides/:id/location', async (req, res) => {
     const arrived=destination&&distanceMeters([lat,lng],destination)<=Math.max(200,Math.min(500,accuracy||0));
     const duration=Number(ride.estimatedDurationMinutes||estimateDurationMinutes(ride.path));
     const timedOut=ride.status==='active'&&ride.startedAt&&now-new Date(ride.startedAt).getTime()>=duration*60000;
+    let justCompleted=false;
     if((ride.status==='active'&&arrived)||timedOut){
+      justCompleted=true;
       ride.status='completed';
       ride.completedAt=now;
       ride.prog=1;
@@ -110,6 +121,7 @@ router.put('/rides/:id/location', async (req, res) => {
       ride.location = { lat, lng, accuracy, updatedAt: now };
     }
     await ride.save();
+    if(justCompleted)await onStatusChange(ride,'active');
     res.json({ status: ride.status, completedAt: ride.completedAt, prog: ride.prog, location: ride.location||null });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update ride location.' });
@@ -136,16 +148,30 @@ router.post('/rides', async (req, res) => {
     if (!user.car || user.car.st !== 'approved') {
       return res.status(403).json({ error: 'Your vehicle has not been verified by an administrator yet.' });
     }
+    if (user.car.maintenance === 'inactive') return res.status(403).json({ error: 'Your vehicle is inactive. Request reactivation before publishing a ride.' });
+    if (user.car.maintenance === 'due') return res.status(403).json({ error: 'Your vehicle is due for service. Pay the service fee and clear it before publishing a ride.' });
     if (await hasActiveJourney(req.user.id)) {
       return res.status(409).json({ error: 'Complete your current trip before publishing another ride.' });
     }
     const fields = ['path', 'time', 'date', 'cap', 'seats', 'rate', 'pf', 'rep', 'note'];
     const rideData = Object.fromEntries(fields.filter(field => req.body[field] !== undefined).map(field => [field, req.body[field]]));
+    const vtype = VEHICLE_TYPES[user.car.type] ? user.car.type : 'car';
+    const maxSeats = VEHICLE_TYPES[vtype].maxSeats;
+    rideData.cap = Math.max(1, Math.min(maxSeats, Number(rideData.cap) || VEHICLE_TYPES[vtype].defaultSeats));
+    rideData.seats = rideData.cap;
+    let networkId = null;
+    if (req.body.networkId) {
+      const nets = await verifiedNetworkIds(req.user.id);
+      if (!nets.has(String(req.body.networkId))) return res.status(403).json({ error: 'You are not a verified member of that network.' });
+      networkId = String(req.body.networkId);
+    }
     const ride = new Ride({
       ...rideData,
       own: req.user.id,
       drv: user.name,
-      veh: user.car.m
+      veh: user.car.m,
+      vtype,
+      networkId
     });
     await ride.save();
     res.status(201).json(ride);
@@ -164,8 +190,13 @@ router.put('/rides/:id', async (req, res) => {
     if (req.user.role !== 'admin' && String(ride.own) !== req.user.id) {
       return res.status(403).json({ error: 'You can only update your own rides.' });
     }
+    const previousStatus = ride.status;
     const fields = ['status', 'prog', 'rt'];
     const updates = Object.fromEntries(fields.filter(field => req.body[field] !== undefined).map(field => [field, req.body[field]]));
+    const next = { scheduled: ['boarding', 'cancelled'], boarding: ['active', 'cancelled'], active: ['completed'], completed: [], cancelled: [] };
+    if (updates.status !== undefined && updates.status !== ride.status && !(next[ride.status] || []).includes(updates.status)) {
+      return res.status(409).json({ error: `A ride that is ${ride.status} cannot become ${updates.status}.` });
+    }
     if (req.user.role !== 'admin' && ['boarding','active'].includes(updates.status) && await hasActiveJourney(req.user.id, ride._id)) {
       return res.status(409).json({ error: 'Complete your current trip before starting another one.' });
     }
@@ -182,7 +213,8 @@ router.put('/rides/:id', async (req, res) => {
     }
     Object.assign(ride, updates);
     await ride.save();
-    res.json(ride);
+    await onStatusChange(ride, previousStatus);
+    res.json(await Ride.findById(ride._id));
   } catch (err) {
     res.status(500).json({ error: 'Failed to update ride.' });
   }

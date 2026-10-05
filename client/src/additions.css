@@ -1,0 +1,4 @@
+/* Small additions for the new modules; everything else reuses the original design system. */
+.ur-dialog-overlay > div:not(.ur-dialog) .card { margin-bottom: 12px; }
+.ur-dialog-overlay > div:not(.ur-dialog) { background: transparent; }
+.card .card { box-shadow: none; }

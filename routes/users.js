@@ -5,6 +5,7 @@ const Ride = require('../models/Ride');
 const Booking = require('../models/Booking');
 const Message = require('../models/Message');
 const { requireAdmin } = require('../middleware/auth');
+const { normalizeVehicle, MAINTENANCE } = require('../services/vehicles');
 
 const router = express.Router();
 
@@ -30,9 +31,41 @@ router.put('/:id', async (req, res) => {
     }
 
     if (req.body.car && typeof req.body.car === 'object') {
-      const model = typeof req.body.car.m === 'string' ? req.body.car.m.trim() : '';
-      if (!model) return res.status(400).json({ error: 'Vehicle model and registration are required.' });
-      updates.car = isAdmin ? req.body.car : { m: model, st: 'pending' };
+      const body = req.body.car;
+      if (isAdmin) {
+        const target = await User.findById(req.params.id).select('car');
+        if (!target) return res.status(404).json({ error: 'User not found.' });
+        const cur = target.car && target.car.toObject ? target.car.toObject() : (target.car || {});
+        const merged = normalizeVehicle({ ...cur, ...body }) || {};
+        merged.st = ['pending', 'approved', 'rejected'].includes(body.st) ? body.st : (cur.st || 'pending');
+        merged.maintenance = MAINTENANCE.includes(body.maintenance) ? body.maintenance : (cur.maintenance || 'active');
+        merged.lastServiceAt = cur.lastServiceAt || null;
+        merged.reactivationRequested = merged.maintenance === 'inactive' ? !!cur.reactivationRequested : false;
+        if (merged.maintenance !== (cur.maintenance || 'active')) {
+          const { notifyUser } = require('../services/notify'), { serviceFeeFor } = require('../services/vehicles');
+          const msg = { active: 'Your vehicle is active again. You can publish rides.', due: `Your vehicle is due for service. Pay the ₹${serviceFeeFor(merged.type)} service fee in Offer a ride to continue publishing.`, inactive: 'Your vehicle was marked inactive. Request reactivation in Offer a ride.' }[merged.maintenance];
+          await notifyUser(req.params.id, msg, 'Vehicle', 'offer');
+        }
+        merged.verifiedAt = cur.verifiedAt || null;
+        merged.verifiedUntil = cur.verifiedUntil || null;
+        if (merged.st === 'approved' && cur.st !== 'approved') {
+          merged.verifiedAt = new Date();
+          merged.verifiedUntil = new Date(Date.now() + 365 * 864e5);
+        }
+        updates.car = merged;
+      } else {
+        const vehicle = normalizeVehicle(body);
+        if (!vehicle) return res.status(400).json({ error: 'Vehicle model and registration are required.' });
+        const prev = await User.findById(req.params.id).select('car');
+        const same = prev && prev.car && prev.car.reg && prev.car.reg === vehicle.reg;
+        updates.car = { ...vehicle, st: 'pending', maintenance: same ? (prev.car.maintenance || 'active') : 'active', lastServiceAt: same ? prev.car.lastServiceAt : null, reactivationRequested: same ? !!prev.car.reactivationRequested : false };
+      }
+    }
+
+    if (!isAdmin && Array.isArray(req.body.trustedContacts)) {
+      updates.trustedContacts = req.body.trustedContacts.slice(0, 5)
+        .map(c => ({ name: String((c && c.name) || '').trim().slice(0, 60), phone: String((c && c.phone) || '').trim().slice(0, 20) }))
+        .filter(c => c.name && c.phone);
     }
 
     if (isAdmin && typeof req.body.rating === 'number') {
