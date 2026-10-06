@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { api, TOKEN_KEY, REMEMBERED_EMAIL_KEY, setUnauthorizedHandler } from '../lib/api';
 import { norm, today } from '../lib/format';
+import { clearCache, prefetch } from '../lib/useCachedApi';
 import { P, rn, rt3, nm, priceFor, km } from '../lib/cityGraph';
 
 const Ctx = createContext(null);
@@ -105,16 +106,18 @@ export function AppProvider({ children }) {
 
   const loadAfterLogin = useCallback(async u => {
     const jobs = [syncData(), syncNotes()];
-    if (u.role === 'admin') jobs.push(syncAdmin()); else { jobs.push(syncNetworks()); void refreshMessageNotifications(); }
+    // warm the two data-heavy pages in the background so they open instantly
+    if (u.role === 'admin') { prefetch('/analytics/heatmap?range=7d&vtype=all'); prefetch('/analytics/advanced?range=7d'); jobs.push(syncAdmin()); } else { prefetch('/wallet'); jobs.push(syncNetworks()); void refreshMessageNotifications(); }
     await Promise.all(jobs);
   }, [syncData, syncNotes, syncAdmin, syncNetworks, refreshMessageNotifications]);
 
   /* ---------------- auth ---------------- */
   const clearSession = useCallback(() => {
+    clearCache();
     localStorage.removeItem(TOKEN_KEY);
     setMe(null); setRides([]); setBookings([]); setUsers([]); setIncidents([]); setMsgNotes([]); setMsgs([]); setNetworks([]); setDisruptions([]);
   }, []);
-  useEffect(() => { setUnauthorizedHandler(() => { setMe(null); }); }, []);
+  useEffect(() => { setUnauthorizedHandler(() => { clearCache(); setMe(null); }); }, []);
 
   useEffect(() => {
     (async () => {
@@ -129,6 +132,7 @@ export function AppProvider({ children }) {
   }, []);
 
   const login = async ({ email, password, asAdmin, remember, form }) => {
+    clearCache();
     const data = await api('/auth/login', { method: 'POST', body: { email, password, asAdmin } });
     if (remember) localStorage.setItem(REMEMBERED_EMAIL_KEY, email); else localStorage.removeItem(REMEMBERED_EMAIL_KEY);
     if (remember && form && window.PasswordCredential && navigator.credentials?.store) { try { await navigator.credentials.store(new window.PasswordCredential(form)); } catch (e) { /* ignore */ } }
@@ -138,6 +142,7 @@ export function AppProvider({ children }) {
     void loadAfterLogin(data.user);
   };
   const register = async body => {
+    clearCache();
     const data = await api('/auth/register', { method: 'POST', body });
     localStorage.setItem(TOKEN_KEY, data.token);
     setMe(data.user); setView('find');

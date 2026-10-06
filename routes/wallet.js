@@ -5,7 +5,7 @@ const { requireAdmin } = require('../middleware/auth');
 const router = express.Router();
 
 router.get('/wallet', async (req, res) => {
-  try { res.json({ ...(await wallet.summary(req.user.id)), settings: await wallet.getSettings(), goodwillCredit: wallet.GOODWILL_CREDIT, lateCancelMinutes: wallet.LATE_CANCEL_MINUTES }); }
+  try { const [sum, settings] = await Promise.all([wallet.summary(req.user.id), wallet.getSettings()]); res.json({ ...sum, settings, goodwillCredit: wallet.GOODWILL_CREDIT, lateCancelMinutes: wallet.LATE_CANCEL_MINUTES }); }
   catch (e) { res.status(500).json({ error: 'Failed to load wallet.' }); }
 });
 

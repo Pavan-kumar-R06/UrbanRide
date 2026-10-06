@@ -3,6 +3,7 @@ import { useApp } from '../../state/AppContext';
 import { Hd, Stat, Tag, Bar } from '../../components/ui';
 import { Veh } from '../../components/Icons';
 import { api } from '../../lib/api';
+import { useCachedApi } from '../../lib/useCachedApi';
 import { rn, km, near, vLabel } from '../../lib/cityGraph';
 import { dt, today, ago, inr } from '../../lib/format';
 
@@ -17,7 +18,7 @@ const TXN = { topup: 'Top-up', ride_hold: 'Fare held', ride_payment: 'Ride payme
 
 export default function Ana() {
   const { rides, bookings, users, incidents, toast } = useApp();
-  const [adv, setAdv] = useState(null), [money, setMoney] = useState(null), [mode, setMode] = useState('start');
+  const [mode, setMode] = useState('start');
   const [rng, setRng] = useState('7d'), [metric, setMetric] = useState('rides');
   const filterDays = rng === 'today' ? 1 : rng === '7d' ? 7 : rng === '30d' ? 30 : 999;
   const cutoff = rng === 'all' ? '2000-01-01' : dt(filterDays - 1);
@@ -55,8 +56,9 @@ export default function Ana() {
   }
   const maxVal = Math.max(1, ...bars.map(x => x.val));
   const isRev = metric === 'revenue';
-  useEffect(() => { api('/analytics/advanced?range=' + rng).then(setAdv).catch(() => {}); }, [rng]);
-  useEffect(() => { api('/wallet/platform').then(setMoney).catch(() => {}); api('/wallet/settings').then(x => setMode(x.mode)).catch(() => {}); }, [rng]);
+  const { data: adv } = useCachedApi('/analytics/advanced?range=' + rng);
+  const { data: money } = useCachedApi('/wallet/platform');
+  useEffect(() => { api('/wallet/settings').then(x => setMode(x.mode)).catch(() => {}); }, []);
   const setM = async m => { try { await api('/wallet/settings', { method: 'PUT', body: { mode: m } }); setMode(m); toast('Charge timing updated. It applies to new bookings.'); } catch (e) { toast(e.message); } };
   const maxRoute = adv ? Math.max(1, ...adv.routeDemand.map(r => r.requests + r.searches)) : 1;
 

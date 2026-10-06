@@ -20,7 +20,18 @@ const rn = path => P[path[0]][0] + ' → ' + P[path[path.length - 1]][0];
 const nodeName = k => (P[k] ? P[k][0] : k);
 
 /* Dijkstra. `blocked` is a Set of edgeKey strings that must not be used. */
+const routeCache = new Map();
 function route(a, b, blocked = new Set()) {
+  // Unblocked routes never change, so remember them (there are only 11x11 pairs).
+  if (!blocked.size) {
+    const key = a + '>' + b;
+    if (!routeCache.has(key)) routeCache.set(key, computeRoute(a, b, blocked));
+    const hit = routeCache.get(key);
+    return hit && hit.slice();
+  }
+  return computeRoute(a, b, blocked);
+}
+function computeRoute(a, b, blocked) {
   const D = { [a]: 0 }, pr = {}, q = new Set(Object.keys(P));
   while (q.size) {
     let u = null;

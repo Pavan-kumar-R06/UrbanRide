@@ -135,7 +135,7 @@ function advanced({ rides, bookings, signals }) {
     detouredRides: pct(rideDetours.filter(x => x > 1.05).length, rideDetours.length), maxRide: rideDetours.length ? +Math.max(...rideDetours).toFixed(2) : 0 };
 
   return { routeDemand, occupancy, vehicles, peakHours, cancellations, detours,
-    totals: { rides: live.length, bookings: bookings.length, searches: signals.length } };
+    totals: { rides: live.length, bookings: bookings.length, searches: signals.reduce((n, s) => n + (s.count || 1), 0) } };
 }
 
 module.exports = { heatmap, advanced, bookingPath };

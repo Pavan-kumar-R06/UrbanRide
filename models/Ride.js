@@ -34,4 +34,6 @@ const rideSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
+rideSchema.index({ createdAt: -1 });
+rideSchema.index({ own: 1, status: 1 });
 module.exports = mongoose.model('Ride', rideSchema);

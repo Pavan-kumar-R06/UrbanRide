@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useApp } from '../../state/AppContext';
 import { Hd, Stat, Tag } from '../../components/ui';
 import MapSvg from '../../components/Map';
-import { api } from '../../lib/api';
+import { useCachedApi } from '../../lib/useCachedApi';
 import { hourLabel } from '../../lib/format';
 import { VEHICLES, P } from '../../lib/cityGraph';
 import { Veh } from '../../components/Icons';
@@ -10,8 +10,7 @@ import { Veh } from '../../components/Icons';
 export default function Heat() {
   const { toast } = useApp();
   const [range, setRange] = useState('7d'), [vtype, setVt] = useState('all'), [hour, setHour] = useState('all');
-  const [h, setH] = useState(null);
-  useEffect(() => { api(`/analytics/heatmap?range=${range}&vtype=${vtype}`).then(setH).catch(e => toast(e.message)); }, [range, vtype]); // eslint-disable-line
+  const { data: h, refreshing } = useCachedApi(`/analytics/heatmap?range=${range}&vtype=${vtype}`, e => toast(e.message));
   const view = useMemo(() => {
     if (!h) return null;
     const nodes = {};
@@ -23,6 +22,7 @@ export default function Heat() {
   return (
     <>
       <Hd t="Mobility demand & supply" s="Where and when passengers are asking for rides versus where drivers are actually available." />
+      {refreshing && h && <span className="tag b" style={{ float: 'right' }}>Updating…</span>}
       <div className="ana-toolbar" style={{ marginBottom: 14 }}>
         <div className="row"><span className="mu" style={{ fontSize: 12, fontWeight: 700 }}>TIME RANGE:</span><div className="ana-filter-group">{[['today', 'Today'], ['7d', '7 Days'], ['30d', '30 Days'], ['all', 'All data']].map(([k, l]) => <button key={k} className={'ana-filter-btn ' + (range === k ? 'active' : '')} onClick={() => setRange(k)}>{l}</button>)}</div></div>
         <div className="row"><span className="mu" style={{ fontSize: 12, fontWeight: 700 }}>VEHICLE:</span><div className="ana-filter-group"><button className={'ana-filter-btn ' + (vtype === 'all' ? 'active' : '')} onClick={() => setVt('all')}>All</button>{Object.entries(VEHICLES).map(([k, v]) => <button key={k} className={'ana-filter-btn ' + (vtype === k ? 'active' : '')} onClick={() => setVt(k)}><Veh t={k} z={16} /></button>)}</div></div>

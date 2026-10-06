@@ -13,12 +13,17 @@ const { notifyUser } = require('./notify');
 const GOODWILL_CREDIT = 20;       // INR credited to passengers when a driver cancels a confirmed seat
 const LATE_CANCEL_MINUTES = 30;   // cancelling a confirmed seat this close to departure costs a fee
 
+let settingsCache = { at: 0, value: null };   // read on every booking and wallet view, changes almost never
 async function getSettings() {
+  if (settingsCache.value && Date.now() - settingsCache.at < 30000) return settingsCache.value;
   const doc = await Setting.findById('wallet').lean();
-  return { mode: doc && ['start', 'end'].includes(doc.value && doc.value.mode) ? doc.value.mode : 'start' };
+  const value = { mode: doc && ['start', 'end'].includes(doc.value && doc.value.mode) ? doc.value.mode : 'start' };
+  settingsCache = { at: Date.now(), value };
+  return value;
 }
 async function setMode(mode) {
   await Setting.findByIdAndUpdate('wallet', { value: { mode } }, { upsert: true });
+  settingsCache = { at: 0, value: null };
   return getSettings();
 }
 
@@ -95,8 +100,8 @@ async function onPassengerCancel(ride, booking, wasConfirmed) {
 }
 
 async function summary(uid) {
-  const u = await User.findById(uid).select('walletBalance').lean();
-  const [txns, rows] = await Promise.all([
+  const [u, txns, rows] = await Promise.all([
+    User.findById(uid).select('walletBalance').lean(),
     WalletTxn.find({ uid: String(uid) }).sort({ createdAt: -1 }).limit(10).lean(),
     WalletTxn.aggregate([{ $match: { uid: String(uid) } }, { $group: { _id: '$type', total: { $sum: '$amount' } } }])
   ]);
@@ -105,7 +110,6 @@ async function summary(uid) {
   return {
     balance: (u && u.walletBalance) || 0,
     totals: { spent: -sum(['ride_hold', 'ride_payment']), earned: sum(['earning', 'cancellation_compensation']), refunded: sum(['refund']), credits: sum(['credit']), fees: -sum(['cancellation_fee', 'service_fee']), topups: sum(['topup']) },
-    pendingHolds: await Booking.countDocuments({ pid: String(uid), paymentState: 'held' }),
     transactions: txns.map(t => ({ ...t, id: String(t._id), _id: String(t._id) }))
   };
 }

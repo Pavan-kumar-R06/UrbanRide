@@ -2,17 +2,21 @@ import { useEffect, useState } from 'react';
 import { useApp } from '../../state/AppContext';
 import { Hd, Stat, Tag, Empty } from '../../components/ui';
 import { api } from '../../lib/api';
+import { useCachedApi } from '../../lib/useCachedApi';
 import { inr, ago } from '../../lib/format';
 
 const LABEL = { topup: 'Top-up', ride_hold: 'Fare held', ride_payment: 'Ride payment', earning: 'Ride earning', refund: 'Refund', credit: 'Credit', cancellation_fee: 'Cancellation fee', cancellation_compensation: 'Cancellation compensation', platform_fee: 'Platform fee', service_fee: 'Vehicle service fee' };
 
 export default function Wallet() {
   const { me, refreshMe, toast, bookings } = useApp();
-  const [w, setW] = useState(null), [amt, setAmt] = useState(200);
-  const load = () => api('/wallet').then(setW).catch(e => toast(e.message));
-  useEffect(() => { load(); }, [bookings.length]); // eslint-disable-line
-  const topup = async () => { try { setW({ ...(await api('/wallet/topup', { method: 'POST', body: { amount: amt } })), settings: w.settings, goodwillCredit: w.goodwillCredit, lateCancelMinutes: w.lateCancelMinutes }); await refreshMe(); toast(`₹${amt} added to your wallet.`); } catch (e) { toast(e.message); } };
-  if (!w) return <><Hd t="Mobility Wallet" s="Ride contributions, refunds, credits and cancellations." /><p className="mu">Loading…</p></>;
+  const [amt, setAmt] = useState(200);
+  const { data: w, refreshing, reload, replace } = useCachedApi('/wallet', e => toast(e.message));
+  const heldCount = bookings.filter(b => String(b.pid) === String(me.id) && b.paymentState === 'held').length;
+  const bookingKey = bookings.map(b => b.id + b.paymentState + b.st).join('|');
+  useEffect(() => { reload(); }, [bookingKey]); // eslint-disable-line  (refresh quietly when a payment state changes)
+  const topup = async () => { try { replace({ ...(await api('/wallet/topup', { method: 'POST', body: { amount: amt } })), settings: w.settings, goodwillCredit: w.goodwillCredit, lateCancelMinutes: w.lateCancelMinutes }); await refreshMe(); toast(`₹${amt} added to your wallet.`); } catch (e) { toast(e.message); } };
+  // First ever visit: show the real balance immediately (it is already loaded) instead of a blank "Loading…"
+  if (!w) return <><Hd t="Mobility Wallet" s="Ride contributions, refunds, credits and cancellations." /><div className="grid"><Stat i="wallet" v={inr(me.walletBalance || 0)} l="Available balance" c="blue" /></div><p className="mu">Loading transactions…</p></>;
   const start = w.settings.mode === 'start';
   return (
     <>
@@ -33,7 +37,7 @@ export default function Wallet() {
           <div className="card"><h3>How payments work</h3>
             <p className="mu" style={{ marginTop: 0 }}>{start ? <>Fares are <b style={{ color: 'var(--tx)' }}>held from your wallet when the driver starts the ride</b> and released to the driver when it completes.</> : <>Fares are <b style={{ color: 'var(--tx)' }}>debited when the ride completes</b>.</>} Settlement mode is set by the platform admin.</p>
             <p className="mu">If a driver cancels, any held fare is refunded and you receive a <b style={{ color: 'var(--tx)' }}>₹{w.goodwillCredit} credit</b> for a confirmed seat. Cancelling a confirmed seat within {w.lateCancelMinutes} minutes of departure (or after the ride starts) costs a small fee paid to the driver.</p>
-            {w.pendingHolds > 0 && <Tag c="w">{w.pendingHolds} fare(s) currently held</Tag>}
+            {heldCount > 0 && <Tag c="w">{heldCount} fare(s) currently held</Tag>}
           </div>
         </div>
         <div className="card"><h3>Latest 10 transactions</h3>
