@@ -12,7 +12,16 @@ export default function Bookings() {
   const { me, bookings, rides, go, cancelB, openChatThread, rateRide } = useApp();
   const [open, setOpen] = useState({});
   const toggle = (id, k) => setOpen(o => ({ ...o, [id + k]: !o[id + k] }));
-  const mine = bookings.filter(b => String(b.pid) === String(me.id) && rides.some(x => x.id == b.rid)).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).slice(0, 10);
+  const newest = bookings.filter(b => String(b.pid) === String(me.id) && rides.some(x => x.id == b.rid)).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  // keep the legs of one multi-vehicle journey together and in travel order (leg 1, 2, 3)
+  const ordered = [], seenJ = new Set();
+  newest.forEach(b => {
+    if (!b.journeyId) return ordered.push(b);
+    if (seenJ.has(b.journeyId)) return;
+    seenJ.add(b.journeyId);
+    newest.filter(x => x.journeyId === b.journeyId).sort((x, y) => x.legIndex - y.legIndex).forEach(x => ordered.push(x));
+  });
+  const mine = ordered.slice(0, 10);
   if (!mine.length) return <><Hd t="My bookings" s="Track your seat requests, waitlist and completed trips." /><Empty i="ticket" t="No bookings yet."><button className="btn" onClick={() => go('find')}>Find a ride</button></Empty></>;
   const journeyIds = [...new Set(mine.filter(b => b.journeyId).map(b => b.journeyId))];
   return (
@@ -21,13 +30,14 @@ export default function Bookings() {
       {mine.map(b => {
         const r = rides.find(x => x.id == b.rid), isCompleted = Boolean(b.tripCompletedAt) || (r && r.status === 'completed');
         const leg = b.journeyId ? bookings.filter(x => x.journeyId === b.journeyId).length : 0;
+        const isFirstLeg = !b.journeyId || bookings.filter(x => x.journeyId === b.journeyId && ['pending', 'confirmed'].includes(x.st)).sort((x, y) => x.legIndex - y.legIndex)[0]?.id === b.id;
         const needsAlt = b.st === 'ride-cancelled' || (b.disruption && ['pending', 'confirmed'].includes(b.st));
         return (
           <div className="card" key={b.id}>
             <div className="row sp">
               <div className="row"><Av name={r.drv} /><div><h3>{P[b.f][0]} → {P[b.t][0]}</h3><span className="mu"><Veh t={r.vtype} z={17} /> {r.drv} · {r.date} {r.time} · {b.seats} seat(s) · {fareText(b)}</span></div></div>
               <div className="row">
-                {b.journeyId && <Tag c="p">Journey leg {b.legIndex + 1}/{leg}</Tag>}
+                {b.journeyId && <Tag c="p"><Veh t={r.vtype} z={13} /> Leg {b.legIndex + 1} of {leg}</Tag>}
                 {b.disruption && ['pending', 'confirmed'].includes(b.st) && <Tag c="r">⚠ Route disrupted</Tag>}
                 {isCompleted ? <Tag c="b">trip completed</Tag> : <Tag c={CL[b.st]}>{b.st}</Tag>}
                 {b.paymentState === 'held' && <Tag c="w">₹{b.paidAmount} held</Tag>}
@@ -52,10 +62,11 @@ export default function Bookings() {
             {needsAlt && <AlternativesPanel booking={b} />}
             <div className="row" style={{ marginTop: 10 }}>
               <button className="btn g s" onClick={() => toggle(b.id, 'dna')}>{open[b.id + 'dna'] ? 'Hide' : 'View'} Journey DNA</button>
-              {['pending', 'confirmed'].includes(b.st) && !isCompleted && <button className="btn g s" onClick={() => toggle(b.id, 'share')}>{open[b.id + 'share'] ? 'Hide' : 'Share live tracking'}</button>}
+              {['pending', 'confirmed'].includes(b.st) && !isCompleted && (!b.journeyId || isFirstLeg) && <button className="btn g s" onClick={() => toggle(b.id, 'share')}>{open[b.id + 'share'] ? 'Hide' : b.journeyId ? 'Share whole journey' : 'Share live tracking'}</button>}
+              {b.journeyId && !isFirstLeg && <span className="mu" style={{ fontSize: 12 }}>Tracked by the journey link on leg 1</span>}
             </div>
             {open[b.id + 'dna'] && <DnaLoader body={{ bookingId: b.id }} />}
-            {open[b.id + 'share'] && <SharePanel rideId={b.rid} bookingId={b.id} />}
+            {open[b.id + 'share'] && <SharePanel rideId={b.rid} bookingId={b.id} journeyId={b.journeyId || ''} />}
           </div>
         );
       })}

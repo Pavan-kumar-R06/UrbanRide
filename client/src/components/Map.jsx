@@ -4,7 +4,8 @@ import { Ic } from './Icons';
 
 /* Same cartographic SVG engine as the original app, plus optional analytic layers
    (heat = per-hub values, traffic = per-segment congestion, blocked = closed segments). */
-export default function MapSvg({ list = [], hi, pick, drop, from, start, end, progress, location, heat, traffic, blocked, vtype, fixed }) {
+/* legs = [{ path, color, state: 'done' | 'current' | 'next' }] draws a multi-vehicle journey; hubs = change-over hubs. */
+export default function MapSvg({ list = [], hi, pick, drop, from, start, end, progress, location, heat, traffic, blocked, vtype, fixed, legs, hubs }) {
   const { map, toggleMap } = useApp();
   const { z, cx, cy, lay, big } = map;
   const w = 100 / z, x = Math.max(0, Math.min(100 - w, cx - w / 2)), y = Math.max(0, Math.min(100 - w, cy - w / 2));
@@ -78,6 +79,13 @@ export default function MapSvg({ list = [], hi, pick, drop, from, start, end, pr
         {heat && heat.edges ? heat.edges.map(e => <line key={'h' + e.key} x1={P[e.a][1]} y1={P[e.a][2]} x2={P[e.b][1]} y2={P[e.b][2]} stroke={e.value > 0 ? '#ef4444' : '#38bdf8'} strokeWidth={0.8 + 3.2 * Math.min(1, Math.abs(e.value) / heatMax)} strokeLinecap="round" opacity={e.value ? 0.75 : 0.15} />) : null}
         {blocked ? [...blockedSet].map(k => { const [a, b] = k.split('-'); if (!P[a] || !P[b]) return null; const mx = (P[a][1] + P[b][1]) / 2, my = (P[a][2] + P[b][2]) / 2; return (<g key={'x' + k}><line x1={P[a][1]} y1={P[a][2]} x2={P[b][1]} y2={P[b][2]} stroke="#ef4444" strokeWidth="2" strokeDasharray="1.6 1.2" /><circle cx={mx} cy={my} r="2.4" fill="#ef4444" stroke="#fff" strokeWidth=".6" /><text x={mx} y={my + 1.1} fontSize="3" fontWeight="900" textAnchor="middle" fill="#fff">✕</text></g>); }) : null}
 
+        {legs ? legs.map((l, i) => (
+          <g key={'leg' + i}>
+            <polyline points={ln(l.path)} fill="none" stroke="#0c131d" strokeWidth="4.4" strokeLinecap="round" strokeLinejoin="round" />
+            <polyline points={ln(l.path)} fill="none" stroke={l.color} strokeWidth={l.state === 'current' ? 3.2 : 2.4} strokeLinecap="round" strokeLinejoin="round" opacity={l.state === 'done' ? 0.4 : 1} strokeDasharray={l.state === 'next' ? '2.2 1.4' : undefined} />
+          </g>)) : null}
+        {hubs ? hubs.map(k => P[k] ? (
+          <g key={'hub' + k}><circle cx={P[k][1]} cy={P[k][2]} r="3.6" fill="#0c131d" stroke="#ffffff" strokeWidth="1" /><path d={`M${P[k][1] - 1.6} ${P[k][2] - 0.7}h3.2l-1 -1M${P[k][1] + 1.6} ${P[k][2] + 0.7}h-3.2l1 1`} fill="none" stroke="#ffffff" strokeWidth=".55" strokeLinecap="round" strokeLinejoin="round" /></g>) : null) : null}
         {list.map((q, i) => <polyline key={'l' + i} points={ln(q.path)} fill="none" stroke="#475569" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" opacity=".5" />)}
         {selected ? <>
           <polyline points={ln(selected.path)} fill="none" stroke="#0284c7" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />

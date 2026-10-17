@@ -64,7 +64,7 @@ export default function Live() {
             <button className="btn d" onClick={() => { setSosOpen(!sosOpen); setSosRide(r.id); }}>SOS Emergency</button>
             <button className="btn g" onClick={() => openChatThread(r.id)}>Message</button>
           </div></div>
-          {!isOwner && pb && <SharePanel rideId={r.id} bookingId={pb.id} />}
+          {!isOwner && pb && <SharePanel rideId={r.id} bookingId={pb.id} journeyId={pb.journeyId || ''} />}
           {sosOpen && (
             <div className="card"><h3>Emergency report</h3><p className="mu">Tell the response team what is happening. Include location details if you can.</p>
               <div className="fg">

@@ -6,6 +6,7 @@ const schema = new mongoose.Schema({
   sharedBy: { type: String, required: true },
   rideId: { type: String, required: true },
   bookingId: { type: String, default: '' },
+  journeyId: { type: String, default: '', index: true },
   contactName: { type: String, default: '', maxlength: 60 },
   contactPhone: { type: String, default: '', maxlength: 20 },
   revoked: { type: Boolean, default: false },

@@ -124,13 +124,13 @@ export function DnaLoader({ body }) {
 
 /* ---------- Share live tracking (passengers only) ---------- */
 const digitsOf = ph => { let d = String(ph || '').replace(/\D/g, ''); if (d.length === 11 && d[0] === '0') d = d.slice(1); return d.length === 10 ? '91' + d : d; };
-export function SharePanel({ rideId, bookingId }) {
+export function SharePanel({ rideId, bookingId, journeyId = '' }) {
   const { toast, me } = useApp();
   const [list, setList] = useState([]), [name, setName] = useState(''), [phone, setPhone] = useState(''), [busy, setBusy] = useState(false);
-  const load = () => api('/shares').then(l => setList(l.filter(s => s.rideId === String(rideId)).slice(0, 10))).catch(() => {});
-  useEffect(() => { load(); }, [rideId]); // eslint-disable-line
+  const load = () => api('/shares').then(l => setList(l.filter(s => journeyId ? s.journeyId === String(journeyId) : (s.rideId === String(rideId) && !s.journeyId)).slice(0, 10))).catch(() => {});
+  useEffect(() => { load(); }, [rideId, journeyId]); // eslint-disable-line
   const link = t => location.origin + '/track/' + t;
-  const message = t => `${me.name} shared a live UrbanRide trip with you. Follow it here: ${link(t)}`;
+  const message = t => `${me.name} shared a live UrbanRide ${journeyId ? 'journey (several vehicles, one link)' : 'trip'} with you. Follow it here: ${link(t)}`;
 
   /* Creates (or reuses) a link for this person, then opens WhatsApp / SMS straight to their number. */
   const sendTo = async (cName, cPhone, channel) => {
@@ -142,7 +142,7 @@ export function SharePanel({ rideId, bookingId }) {
     setBusy(true);
     try {
       let share = list.find(s => digitsOf(s.contactPhone) === num);
-      if (!share) share = await api('/shares', { method: 'POST', body: { rideId: String(rideId), bookingId: bookingId || '', contactName: cName, contactPhone: cPhone } });
+      if (!share) share = await api('/shares', { method: 'POST', body: { rideId: String(rideId), bookingId: bookingId || '', journeyId, contactName: cName, contactPhone: cPhone } });
       const url = channel === 'wa' ? `https://wa.me/${num}?text=${encodeURIComponent(message(share.token))}` : `sms:+${num}?&body=${encodeURIComponent(message(share.token))}`;
       if (channel === 'wa') { if (win) win.location.href = url; else window.location.href = url; } else window.location.href = url;
       toast(`Opening ${channel === 'wa' ? 'WhatsApp' : 'messages'} for ${cName || 'your contact'}…`); load();
@@ -150,7 +150,7 @@ export function SharePanel({ rideId, bookingId }) {
   };
   const copyOnly = async () => {
     try {
-      const s = await api('/shares', { method: 'POST', body: { rideId: String(rideId), bookingId: bookingId || '', contactName: name.trim(), contactPhone: phone.trim() } });
+      const s = await api('/shares', { method: 'POST', body: { rideId: String(rideId), bookingId: bookingId || '', journeyId, contactName: name.trim(), contactPhone: phone.trim() } });
       try { await navigator.clipboard.writeText(link(s.token)); toast('Tracking link copied.'); } catch (e) { toast(link(s.token)); }
       load();
     } catch (e) { toast(e.message); }
@@ -159,8 +159,8 @@ export function SharePanel({ rideId, bookingId }) {
   const contacts = me?.trustedContacts || [];
   return (
     <div className="card">
-      <div className="row" style={{ marginBottom: 6 }}><Ic n="share" z={18} /><h3 style={{ margin: 0 }}>Share live tracking</h3></div>
-      <p className="mu" style={{ marginTop: 0 }}>The link opens a read-only live view. It shows “Ride completed” and stops updating when your trip ends, and you can stop it any time.</p>
+      <div className="row" style={{ marginBottom: 6 }}><Ic n="share" z={18} /><h3 style={{ margin: 0 }}>{journeyId ? 'Share whole journey' : 'Share live tracking'}</h3></div>
+      <p className="mu" style={{ marginTop: 0 }}>{journeyId ? 'One link follows you through every vehicle: it shows each leg, its vehicle and who is driving, and moves on automatically at each change. ' : ''}The link opens a read-only live view. It shows “Ride completed” and stops updating when your trip ends, and you can stop it any time.</p>
       {contacts.map(c => (
         <div key={c.phone} className="row sp" style={{ padding: '8px 0', borderTop: '1px solid var(--bd)' }}>
           <div><b>{c.name}</b><br /><span className="mu" style={{ fontSize: 12 }}>{c.phone}</span></div>
