@@ -159,6 +159,18 @@ router.post('/rides', async (req, res) => {
     const maxSeats = VEHICLE_TYPES[vtype].maxSeats;
     rideData.cap = Math.max(1, Math.min(maxSeats, Number(rideData.cap) || VEHICLE_TYPES[vtype].defaultSeats));
     rideData.seats = rideData.cap;
+
+
+// block publishing the same ride twice (double-click / retry)
+const mine = await Ride.find({ own: req.user.id, status: 'scheduled' }).select('path time date').lean();
+const sameRide = mine.some(r =>
+  String(r.time) === String(rideData.time) &&
+  String(r.date || '') === String(rideData.date || '') &&
+  (r.path || []).join('>') === (rideData.path || []).join('>')
+);
+if (sameRide) return res.status(409).json({ error: 'You already published this ride.' });
+
+
     let networkId = null;
     if (req.body.networkId) {
       const nets = await verifiedNetworkIds(req.user.id);

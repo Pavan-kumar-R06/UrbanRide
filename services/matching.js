@@ -32,8 +32,21 @@ const small = v => v === 'bike' || v === 'scooter';
 const NEAR = 15; // same pick-up / drop-off tolerance as direct search (graph units)
 
 function planChains(rides, q, { userId, maxLegs = 3, maxWait = 60, limit = 5 } = {}) {
-  const seats = q.seats || 1;
-  const open = rides.filter(r => r.status === 'scheduled' && String(r.own) !== String(userId) && Number.isFinite(startMs(r)));
+  // const seats = q.seats || 1;
+  // const open = rides.filter(r => r.status === 'scheduled' && String(r.own) !== String(userId) && Number.isFinite(startMs(r)));
+  
+
+const seats = q.seats || 1;
+// two rides are "the same" if same driver, date, time and route (even if they are two DB documents)
+const sig = r => [String(r.own), r.date || '', r.time || '', (r.path || []).join('>')].join('|');
+const seenRide = new Set();
+const open = rides
+  .filter(r => r.status === 'scheduled' && String(r.own) !== String(userId) && Number.isFinite(startMs(r)))
+  .filter(r => { const k = sig(r); if (seenRide.has(k)) return false; seenRide.add(k); return true; });
+
+
+
+
   const rid = r => String(r._id || r.id);
 
   // which hubs can still reach the destination in k more rides (ignoring time) - keeps the search small
@@ -99,7 +112,10 @@ function planChains(rides, q, { userId, maxLegs = 3, maxWait = 60, limit = 5 } =
 
   const seen = new Set();
   const best = plans.sort((a, b) => a.rank - b.rank).filter(p => {
-    const key = p.legs.map(l => rid(l.ride) + ':' + l.f + '>' + l.t).join('|');
+
+    //const key = p.legs.map(l => rid(l.ride) + ':' + l.f + '>' + l.t).join('|');
+
+    const key = p.legs.map(l => sig(l.ride) + ':' + l.f + '>' + l.t).join('||');
     if (seen.has(key)) return false; seen.add(key); return true;
   }).slice(0, limit);
   const nearMisses = best.length ? [] : misses.sort((a, b) => Math.abs(a.gapMin) - Math.abs(b.gapMin)).slice(0, 3);

@@ -37,6 +37,12 @@ export function AppProvider({ children }) {
   R.current = { me, view, rides, bookings, msgs, thread, gpsRideId };
   const seenNotes = useRef(new Set()), watchRef = useRef(null), lastSent = useRef(0), syncing = useRef(false);
 
+
+
+const publishing = useRef(false);
+
+
+
   const toast = useCallback(t => {
     const id = Math.random().toString(36).slice(2);
     setToasts(l => [...l, { id, t }]);
@@ -244,15 +250,40 @@ export function AppProvider({ children }) {
     try { await api('/rides/' + id, { method: 'PUT', body: { status: 'cancelled' } }); toast('Ride cancelled. Passengers notified.'); await Promise.all([syncData(), syncNotes()]); }
     catch (e) { toast(e.message); }
   };
-  const publish = async cr => {
-    if (activeJourneyForUser()) return toast('Complete your current trip before publishing another ride.');
-    if (cr.f === cr.t) return toast('Choose different start and end points.');
-    const path = rt3(cr.f, cr.via, cr.t);
-    try {
-      await api('/rides', { method: 'POST', body: { path, time: cr.time, date: cr.date, cap: cr.seats, seats: cr.seats, rate: cr.rate, pf: cr.pf, rep: cr.rep, note: cr.note, networkId: cr.networkId || undefined } });
-      toast('Ride published.'); await syncData(); setView('drive');
-    } catch (e) { toast(e.message || 'Ride could not be published. Please try again.'); }
-  };
+
+
+
+
+
+
+
+  // const publish = async cr => {
+  //   if (activeJourneyForUser()) return toast('Complete your current trip before publishing another ride.');
+  //   if (cr.f === cr.t) return toast('Choose different start and end points.');
+  //   const path = rt3(cr.f, cr.via, cr.t);
+  //   try {
+  //     await api('/rides', { method: 'POST', body: { path, time: cr.time, date: cr.date, cap: cr.seats, seats: cr.seats, rate: cr.rate, pf: cr.pf, rep: cr.rep, note: cr.note, networkId: cr.networkId || undefined } });
+  //     toast('Ride published.'); await syncData(); setView('drive');
+  //   } catch (e) { toast(e.message || 'Ride could not be published. Please try again.'); }
+  // };
+
+const publish = async cr => {
+  if (publishing.current) return;                 // ignore double-clicks
+  if (activeJourneyForUser()) return toast('Complete your current trip before publishing another ride.');
+  if (cr.f === cr.t) return toast('Choose different start and end points.');
+  publishing.current = true;
+  const path = rt3(cr.f, cr.via, cr.t);
+  try {
+    await api('/rides', { method: 'POST', body: { path, time: cr.time, date: cr.date, cap: cr.seats, seats: cr.seats, rate: cr.rate, pf: cr.pf, rep: cr.rep, note: cr.note, networkId: cr.networkId || undefined } });
+    toast('Ride published.'); await syncData(); setView('drive');
+  } catch (e) { toast(e.message || 'Ride could not be published. Please try again.'); }
+  finally { publishing.current = false; }
+};
+
+
+
+
+
   const canDeleteRide = r => {
     if (!r || String(r.own) !== String(R.current.me?.id)) return false;
     if (['boarding', 'active'].includes(r.status)) return false;
